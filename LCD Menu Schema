@@ -3,83 +3,96 @@ Cycloid Menu Schema.
 Overall Structure
 
 The menu system is designed to control a 4-wheel stepper motor system using an LCD and a rotary encoder. It allows users to adjust various parameters, including wheel speeds, LFO settings, and speed ratios. The system is navigated using a rotary encoder for scrolling and short/long presses for selection and mode changes.
+
 Key Components
-    * Rotary Encoder: The primary input device.
-    * Turning the encoder scrolls through options or adjusts values.
-    * A short press selects an option or toggles editing.
-    * A long press returns to the main menu or pauses/resumes the system.
-    * LCD (16x2 Display): Displays the menu structure, options, and parameter values.
-    * Menu Options: The main menu consists of the following options:
-    * SPEED: Adjusts the individual speeds of the four wheels (X, Y, Z, A).
-    * LFO: Configures Low-Frequency Oscillator settings for the wheels.
-    * RATIO: Selects predefined speed ratios for the wheels.
-    * MASTER: Adjusts the master speed control.
+   * Rotary Encoder: The primary input device.
+   * Turning the encoder scrolls through options or adjusts values.
+   * A short press selects an option or toggles editing.
+   * A long press returns to the main menu or pauses/resumes the system.
+   * LCD (16x2 Display): Displays the menu structure, options, and parameter values.
+   * Menu Options: The main menu consists of the following options:
+   * SPEED: Adjusts the individual speeds of the four wheels (X, Y, Z, A).
+   * LFO: Configures Low-Frequency Oscillator settings for the wheels.
+   * RATIO: Selects predefined speed ratios for the wheels.
+   * MASTER: Adjusts the master speed control.
+   * RST: Allows the user to reset the machine to default settings.
 
 Menu Navigation
 1. Main Menu: 
   Upon startup, the user is presented with the main menu, 
   displaying the four options (SPEED, LFO, RATIO, MASTER). 
   The encoder is used to scroll through these options, and 
-  a short press selects the highlighted option. A long press 
-  pauses or resumes the system.
+  a short press selects the highlighted option.
 2. SPEED Menu:
-    * Displays the speed of the currently selected wheel.
-    * Turning the encoder selects between the four wheels (X, Y, Z, A).
-    * A short press toggles between selecting a wheel and editing its speed.
-    * When editing, turning the encoder changes the selected wheel's speed.
-    * A long press returns to the main menu.
+   * Displays the speed of the currently selected wheel.
+   * Turning the encoder selects between the four wheels (X, Y, Z, A).
+   * A short press toggles between selecting a wheel and editing its speed.
+   * When editing, turning the encoder changes the selected wheel's speed in increments of 0.1.
+   * Wheel speed is always displayed at a 4 digit number with 1 decimal place and a range of 000.0 to 256.0 inclusive. 
+   * The default value on boot should be 010.00 for all wheels.
+   * A long press returns to the main menu.
 3. LFO Menu:
-    * Allows configuration of LFO parameters.
-    * The encoder scrolls through the LFO parameters for each wheel (X Depth, X Rate, Y Depth, Y Rate, Z Depth, Z Rate, A Depth, A Rate).
-    * A short press toggles between selecting an LFO parameter and editing its value.
-    * When editing, turning the encoder adjusts the selected parameter.
-    * A long press returns to the main menu.
+   * Allows configuration of LFO parameters.
+   * The encoder scrolls through the LFO parameters for each wheel (X Depth, X Rate, X Uni/Bi, Y Depth, Y Rate, Y Uni/Bi, Z Depth, Z Rate, Z Uni/Bi, A Depth, A Rate). A Uni/Bi)
+   * Depth is always 4 digits with 1 decimal place and is limited to the values between 000.0 and 100.0 inclusive. 
+   * The default Depth value for all wheels upon booting is 000.0.
+   * Rate is a 4 digit number with 1 decimal place and is limited to the values between 000.0 and 256.0.
+   * The default Rate value for all wheels upon booting is 000.0.
+   * Uni/Bi selects between uni- and bipolar transformations. Rotating the encoder to change the value should toggle between UNI and BI.
+   * A short press toggles between selecting an LFO parameter and editing its value.
+   * When editing, turning the encoder adjusts the selected parameter by 0.1.
+   * A long press returns to the main menu.
 4. RATIO Menu:
-    * Provides predefined speed ratios for the wheels.
-    * The encoder scrolls through the available ratio sets.
-    * A short press takes the user to an "APPLY" confirmation screen.
-    * The user can choose "Y" (Yes) or "N" (No) using the encoder.
-    * Selecting "Y" applies the ratios to the wheel speeds and returns to the main menu.
-    * Selecting "N" returns to the ratio selection screen.
-    * A long press returns to the main menu.
+   * Provides predefined speed ratios for the wheels.
+   * The encoder scrolls through the available ratio sets.
+   * A long press takes the user to an "APPLY" confirmation screen.
+   * The user can choose "Y" (Yes) or "N" (No) using the encoder.
+   * Selecting "Y" with a long press applies the ratios to the wheel speeds and returns to the main menu.
+   * Selecting "N" with a long press returns to the ratio selection screen.
 5. MASTER Menu:
-  * Allows adjustment of a master speed multiplier. 
-  * A short press allows the user to toggle the ability at alter the master speed multiplier.
-  * Turning the encoder changes the master speed. 
-  * A long press returns to the main menu.
+   * Allows adjustment of a master speed multiplier. 
+   * A short press allows the user to toggle the ability at alter the master speed multiplier.
+   * Turning the encoder changes the master speed. 
+   * Master speed is always a 5 digit number with a range of 000.01 to 999.99
+   * The default value for master speed upon boot is 001.00
+   * A long press returns to the main menu.
+6. RESET Menu:
+   * The user can choose "Y" (Yes) or "N" (No) using the encoder.
+   * Selecting "Y" with a long press resets all values to the default boot values.
+   * Selecting "N" with a long press returns to the main menu.
 
 System Pause/Resume
   * A long press on the encoder in the main menu toggles the system's pause state.
-  * When paused, an asterisk is displayed on the LCD. The motors should not move when paused.
+  * When paused *PAUSED* is displayed on the LCD. The motors should not move when paused.
   * Another long press resumes the system.
 
 ---------------------------------------------------------------------
 
 MENU STRUCTURE
 
-|MAIN MENU
-   |SPEED
-      |X:10
-      |Y:10
-      |Z:10
-      |A:10
-   |LFO
-      |X DEPTH: 
-      |X RATE:
-      |X UNI/BI:
-      |Y DEPTH:
-      |Y RATE:
-      |Y UNI/BI:
-      |Z DEPTH:
-      |Z RATE:
-      |Z UNI/BI:
-      |A DEPTH:
-      |A RATE:
-      |A UNI/BI:
-   |RATIO
-      |X1:Y1:Z1:A1
-      |X1:Y2:Z3:A4
-      |X2:Y6:Z8:A4
-      |X128:Y12:Z17:A5
-   |MASTER
-      |mTIME:
+|MAIN MENU // Rotating encode selects between menu options. Short press opens that menu option. Long press on the MAIN MENU changes the screen to say "PAUSED". Subsequent long press revert to normal functionality.
+   |SPEED // Defined in units of master time. Range is -256.0 to +256.0. 4 digits with 1 place. 
+      |X:010.0
+      |Y:010.0
+      |Z:010.0
+      |A:010.0
+   |LFO // Depth range is 0-100%. Rate is in units of masterTime, 4 digits with 1 decimal place. UNI/BI selects between a unipolar and bipolar LFO.   
+      |XDEPTH:030.0
+      |XRATE:004.2
+      |XUNI/BI:UNI
+      |YDEPTH:000.0
+      |YRATE:256.0
+      |YUNI/BI:UNI
+      |ZDEPTH:006.0
+      |ZRATE:000.0
+      |ZUNI/BI:UNI
+      |ADEPTH:010.0
+      |ARATE:012.0
+      |AUNI/BI:BI
+   |RATIO // defined in software
+      |X001.0 : Y001.0 : Z001.0 : A001.0
+      |X001.0 : Y002.0 : Z003.0 : A004.0
+   |MASTER // always display 5 digits total with two decimal places. Range: 000.01 to 999.99.
+      |mTIME:10.00
+   |RESET // Long press on either option, no returns to menu, yes resets all settings.
+      |YES / NO
