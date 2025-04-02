@@ -1,14 +1,12 @@
 Drive Assembly // x1
-
-  Servo Mount // x3
+| Servo Mount // x3
     4 x M3 screw
     1 x Servo Mount
     4 x M5 screw    
     4 x M5 2020 nut
     1 x 20T GT2 pulley
     1 x Drive Belt
-
-  Drive Wheel // x3
+| Drive Wheel // x3
     1 x Drive Wheel Mount // 3D Print
     1 x 60T GT2 pulley // MakerStore
     4 x M4 bolt // Bearing to Wheel Mount
@@ -18,8 +16,7 @@ Drive Assembly // x1
     4 x M5 bolt // Drive Wheel mount to 2040 Rail
     4 x M5 2020 nut // Drive Wheel mount to 2040 Rail
     2 x M3 40mm Screw // Locks pulley to Pulley Mount
-  Drive Wheel Assembly // x 3
-
+| Drive Wheel Assembly // x 3
     1 x Rod to Bearing Mount // 3D Printed
     1 x Bearing
     1 x Drive Wheel // 3D Printed
@@ -35,7 +32,7 @@ Frame Assembly // x1
   Connectors to suit
 
 Platen Assembly // x1
-  Platen to Rail Mount // x1
+| Platen to Rail Mount // x1
     1 x 2060 to Bearing Mount
     4 x M4 Bolt
     4 x M4 Nut
@@ -44,7 +41,7 @@ Platen Assembly // x1
     1 x 100mm Lazy Susan Bearing
     1 x 60T GT2 Pulley
     1 x Platen (500mm circle or square)
-  Servo Mount // x1
+| Servo Mount // x1
     4 x M3 screw
     1 x Servo Mount
     4 x M5 screw    
@@ -52,4 +49,14 @@ Platen Assembly // x1
     1 x 20T GT2 pulley
     1 x Drive Belt
 
+Rod Arm Assembly
+| Rod to Wheel Plate
+  | Rod To Rod
+  | Pen Holder Assembly
+      1 x M4 40mm Hex bolt // Locks in pen
+      1 x M4 Nut // Captive Nut
+      1 x Nut Knob // 3D Printed
+      1 x Pen Holder Assembly // 3D Print Parallel or End Style
+      1 x M3 30mm Bolt // Connects Pen Holder Assembly to Rod
+      1 x M3 Nut // Connects Pen Holder Assembly to Rod
   
