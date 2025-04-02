@@ -93,6 +93,6 @@ MENU STRUCTURE
       |X001.0 : Y001.0 : Z001.0 : A001.0
       |X001.0 : Y002.0 : Z003.0 : A004.0
    |MASTER // always display 5 digits total with two decimal places. Range: 000.01 to 999.99.
-      |mTIME:10.00
+      |mTIME:010.00
    |RESET // Long press on either option, no returns to menu, yes resets all settings.
       |YES / NO
