@@ -52,3 +52,34 @@ System Pause/Resume
   * A long press on the encoder in the main menu toggles the system's pause state.
   * When paused, an asterisk is displayed on the LCD. The motors should not move when paused.
   * Another long press resumes the system.
+
+---------------------------------------------------------------------
+
+MENU STRUCTURE
+
+|MAIN MENU
+   |SPEED
+      |X:10
+      |Y:10
+      |Z:10
+      |A:10
+   |LFO
+      |X DEPTH: 
+      |X RATE:
+      |X UNI/BI:
+      |Y DEPTH:
+      |Y RATE:
+      |Y UNI/BI:
+      |Z DEPTH:
+      |Z RATE:
+      |Z UNI/BI:
+      |A DEPTH:
+      |A RATE:
+      |A UNI/BI:
+   |RATIO
+      |X1:Y1:Z1:A1
+      |X1:Y2:Z3:A4
+      |X2:Y6:Z8:A4
+      |X128:Y12:Z17:A5
+   |MASTER
+      |mTIME:
