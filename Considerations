@@ -1,0 +1,11 @@
+Wheel Speed
+
+Wheel speed values should be scaled to provide intuitive access to useful wheel speeds. 
+
+Options
+- Wheel speed of 1 = 1 rotation per unit of time. Assuming unit of time = 1 seconds
+Wheel speed 3 = 3 seconds
+Wheel speed 4 = 4 seconds
+Wheel speed 60 = one minute
+Wheel speed 10 = 
+Wheel speed 20
