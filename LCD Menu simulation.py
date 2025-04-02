@@ -14,19 +14,17 @@ class LCDMenuSimulator:
 
         # Initialize variables
         self.menu_options = ["SPEED", "LFO", "RATIO", "MASTER"]
-        self.current_menu = "MAIN"  # MAIN, SPEED, LFO, RATIO, MASTER
-        self.selected_option = 0  # Index of the selected menu option
-        self.wheel_speeds = [100.0, 100.0, 100.0, 100.0]  # X, Y, Z, A
+        self.current_menu = "MAIN"
+        self.selected_option = 0
+        self.wheel_speeds = [100.0, 100.0, 100.0, 100.0]  # User-defined wheel speeds
         self.lfo_rates = [1.0, 1.0, 1.0, 1.0]
         self.lfo_depths = [0.0, 0.0, 0.0, 0.0]
         self.selected_wheel = 0
         self.editing_speed = False
-        self.selected_param = 0  # 0-7: X_DEPTH, X_RATE, Y_DEPTH, Y_RATE, ...
+        self.selected_param = 0
         self.editing_lfo = False
         self.system_paused = False
-        self.encoder_value = 0  # Keep track of encoder value
-
-        # Ratio Menu Specific
+        self.encoder_value = 0
         self.ratios = [
             [100, 100, 100, 100],
             [50, 100, 150, 200],
@@ -34,8 +32,10 @@ class LCDMenuSimulator:
             [75, 125, 175, 225],
         ]
         self.selected_ratio_index = 0
-        self.applying_ratio = False  # State for APPLY? Y/N
-        self.apply_choice = 0  # 0: No, 1: Yes
+        self.applying_ratio = False
+        self.apply_choice = 0
+        self.master_time = 10.00  # Default value, in seconds
+        self.editing_master = False
 
         # Create GUI elements
         self.display_label = tk.Label(root, text="", font=("Courier", 12), justify=tk.LEFT)
@@ -53,7 +53,7 @@ class LCDMenuSimulator:
         self.ccw_button = tk.Button(button_frame, text="CCW", command=self.handle_encoder_ccw)
         self.ccw_button.pack(side=tk.LEFT, padx=5)
 
-        self.update_display()  # Initial display
+        self.update_display()
 
     def handle_encoder_cw(self):
         """Simulates turning the encoder clockwise."""
@@ -76,23 +76,25 @@ class LCDMenuSimulator:
             self.selected_option = (self.selected_option + increment) % len(self.menu_options)
         elif self.current_menu == "SPEED":
             if self.editing_speed:
-                self.wheel_speeds[self.selected_wheel] += increment * 1.0
-                self.wheel_speeds[self.selected_wheel] = max(min(self.wheel_speeds[self.selected_wheel], 256.0), -256.0)
+                self.wheel_speeds[self.selected_wheel] += increment * 0.1
+                self.wheel_speeds[self.selected_wheel] = max(min(self.wheel_speeds[self.selected_wheel], 256.0), 0.0)
             else:
                 self.selected_wheel = (self.selected_wheel + increment) % 4
         elif self.current_menu == "LFO":
             if self.editing_lfo:
-                if self.selected_param % 2 == 0:  # Even: Depth
+                if self.selected_param % 2 == 0:
                     self.lfo_depths[self.selected_param // 2] += increment * 0.01
                     self.lfo_depths[self.selected_param // 2] = max(min(self.lfo_depths[self.selected_param // 2], 1.0), 0.0)
-                else:  # Odd: Rate
+                else:
                     self.lfo_rates[self.selected_param // 2] += increment * 0.1
                     self.lfo_rates[self.selected_param // 2] = max(min(self.lfo_rates[self.selected_param // 2], 10.0), 0.1)
             else:
                 self.selected_param = (self.selected_param + increment) % 8
         elif self.current_menu == "MASTER":
-            self.master_speed += increment * 0.01
-            self.master_speed = max(min(self.master_speed, 2.0), 0.0)
+            if self.editing_master:
+                self.master_time += increment * 0.01
+                self.master_time = max(min(self.master_time, 20.00), 0.01)
+            
         elif self.current_menu == "RATIO":
             if self.applying_ratio:
                 self.apply_choice = (self.apply_choice + increment) % 2
@@ -115,6 +117,9 @@ class LCDMenuSimulator:
             elif self.current_menu == "RATIO":
                 self.applying_ratio = True
                 self.apply_choice = 0
+            elif self.current_menu == "MASTER":
+                self.editing_master = not self.editing_master
+                
         elif self.current_menu == "SPEED":
             if self.editing_speed:
                 self.editing_speed = False
@@ -126,11 +131,15 @@ class LCDMenuSimulator:
             else:
                 self.editing_lfo = True
         elif self.current_menu == "MASTER":
-            self.current_menu = "MAIN"
+            if self.editing_master:
+                self.editing_master = False
+            else:
+                self.current_menu = "MAIN"
         elif self.current_menu == "RATIO":
             if self.applying_ratio:
                 if self.apply_choice == 1:
-                    self.wheel_speeds = self.ratios[self.selected_ratio_index]
+                    for i in range(4):
+                        self.wheel_speeds[i] = self.ratios[self.selected_ratio_index][i]
                     self.current_menu = "MAIN"
                 else:
                     self.applying_ratio = False
@@ -165,9 +174,9 @@ class LCDMenuSimulator:
         elif self.current_menu == "SPEED":
             display_text = "WHEEL SPEED\n"
             display_text += ["X:", "Y:", "Z:", "A:"][self.selected_wheel]
-            display_text += f"{self.wheel_speeds[self.selected_wheel]:.2f}"
+            display_text += f"{self.wheel_speeds[self.selected_wheel]:.1f}"
             if self.editing_speed:
-                display_text += "#"
+                display_text = display_text[:16] + "#"
             display_text = display_text[:16]
         elif self.current_menu == "LFO":
             if not self.editing_lfo:
@@ -190,8 +199,10 @@ class LCDMenuSimulator:
                     display_text += f"{self.lfo_rates[self.selected_param // 2]:.3f}#"
                     display_text = display_text[:16]
         elif self.current_menu == "MASTER":
-            display_text = "Master Speed\n"
-            display_text += f"{self.master_speed * 100:.0f}%"
+            display_text = "Master Time\n"
+            display_text += f"{self.master_time:05.2f} Sec"
+            if self.editing_master:
+                display_text = display_text[:16] + "#"
             display_text = display_text[:16]
         elif self.current_menu == "RATIO":
             if not self.applying_ratio:
