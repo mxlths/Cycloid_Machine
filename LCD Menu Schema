@@ -1,0 +1,54 @@
+Cycloid Menu Schema.
+
+Overall Structure
+
+The menu system is designed to control a 4-wheel stepper motor system using an LCD and a rotary encoder. It allows users to adjust various parameters, including wheel speeds, LFO settings, and speed ratios. The system is navigated using a rotary encoder for scrolling and short/long presses for selection and mode changes.
+Key Components
+    * Rotary Encoder: The primary input device.
+    * Turning the encoder scrolls through options or adjusts values.
+    * A short press selects an option or toggles editing.
+    * A long press returns to the main menu or pauses/resumes the system.
+    * LCD (16x2 Display): Displays the menu structure, options, and parameter values.
+    * Menu Options: The main menu consists of the following options:
+    * SPEED: Adjusts the individual speeds of the four wheels (X, Y, Z, A).
+    * LFO: Configures Low-Frequency Oscillator settings for the wheels.
+    * RATIO: Selects predefined speed ratios for the wheels.
+    * MASTER: Adjusts the master speed control.
+
+Menu Navigation
+1. Main Menu: 
+  Upon startup, the user is presented with the main menu, 
+  displaying the four options (SPEED, LFO, RATIO, MASTER). 
+  The encoder is used to scroll through these options, and 
+  a short press selects the highlighted option. A long press 
+  pauses or resumes the system.
+2. SPEED Menu:
+    * Displays the speed of the currently selected wheel.
+    * Turning the encoder selects between the four wheels (X, Y, Z, A).
+    * A short press toggles between selecting a wheel and editing its speed.
+    * When editing, turning the encoder changes the selected wheel's speed.
+    * A long press returns to the main menu.
+3. LFO Menu:
+    * Allows configuration of LFO parameters.
+    * The encoder scrolls through the LFO parameters for each wheel (X Depth, X Rate, Y Depth, Y Rate, Z Depth, Z Rate, A Depth, A Rate).
+    * A short press toggles between selecting an LFO parameter and editing its value.
+    * When editing, turning the encoder adjusts the selected parameter.
+    * A long press returns to the main menu.
+4. RATIO Menu:
+    * Provides predefined speed ratios for the wheels.
+    * The encoder scrolls through the available ratio sets.
+    * A short press takes the user to an "APPLY" confirmation screen.
+    * The user can choose "Y" (Yes) or "N" (No) using the encoder.
+    * Selecting "Y" applies the ratios to the wheel speeds and returns to the main menu.
+    * Selecting "N" returns to the ratio selection screen.
+    * A long press returns to the main menu.
+5. MASTER Menu:
+  * Allows adjustment of a master speed multiplier. 
+  * A short press allows the user to toggle the ability at alter the master speed multiplier.
+  * Turning the encoder changes the master speed. 
+  * A long press returns to the main menu.
+
+System Pause/Resume
+  * A long press on the encoder in the main menu toggles the system's pause state.
+  * When paused, an asterisk is displayed on the LCD. The motors should not move when paused.
+  * Another long press resumes the system.
