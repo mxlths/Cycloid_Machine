@@ -18,3 +18,54 @@ The pin out for all connections on the arduino.
 #define LCD_ADDR    0x27  // Common address, change if needed
 #define LCD_COLS    16
 #define LCD_ROWS    2
+
+---------
+This means the following pins are still available for your display and rotary encoder:
+
+Analog Pins (A0–A5) → Can be used as digital I/O.
+Digital Pins (D0, D1, D13) → D0 and D1 are used for serial communication, so avoid them unless necessary. D13 is free.
+Adding a Screen
+1. I2C Display (Recommended)
+
+Uses: Only 2 pins (A4 & A5 for SDA/SCL)
+Example: 0.96" OLED or 16x2 LCD with an I2C backpack
+Pros: Saves pins, simple wiring
+2. SPI Display
+
+Uses: More pins (D10, D11, D13, etc.), may conflict with CNC shield
+Example: TFT LCD, OLED SPI
+Pros: Faster refresh rate, but needs more wiring
+Adding a Rotary Encoder
+A rotary encoder typically needs 2 pins for rotation (CLK, DT) + 1 pin for the button.
+If you're using an I2C display, you have plenty of digital pins left.
+If you're using a SPI display, you may need to use A0–A3 for the encoder.
+Best Setup Recommendation
+Use an I2C display (A4, A5).
+Connect the rotary encoder to D13, A0, A1.
+You'll still have A2, A3 left for extra buttons or inputs.
+
+-----------------
+
+Alternative suggested by chatGPT
+Motor	Step Pin	Dir Pin
+X-Axis	D2	    D5
+Y-Axis	D3	    D6
+Z-Axis	D4    	D7
+A-Axis  D12     D13
+
+---------
+
+Pin Availability with CNC Shield
+The CNC shield primarily uses the following pins:
+
+Function	UNO Pin
+X Step	D2
+X Dir	D5
+Y Step	D3
+Y Dir	D6
+Z Step	D4
+Z Dir	D7
+Enable (all axes)	D8
+Spindle (PWM)	D11
+Coolant/Fan	D12
+Limit Switches	D9, D10
