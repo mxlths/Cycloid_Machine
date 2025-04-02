@@ -1,2 +1,9 @@
 Offset multiple pen holder
-  - Design a pen holder that holds multiple pens offset from each other. Cyan Magenta Yellow pens.
+  - Design a pen holder that holds multiple pens offset from each other.
+
+Improve bearing retention mechanisms for rod connectors. 
+
+Critical Dimensions
+  Bearing: 22mm OD, 8mm ID, 7mm Depth
+  Alu Rod: Print holes at 8.4mm for mild friction joint
+
