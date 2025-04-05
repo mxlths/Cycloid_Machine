@@ -12,31 +12,7 @@ class LCDMenuSimulator:
         self.root = root
         self.root.title("LCD Menu Simulator")
 
-        # Initialize variables
-        self.menu_options = ["SPEED", "LFO", "RATIO", "MASTER", "RESET"]  # Added RESET
-        self.current_menu = "MAIN"
-        self.selected_option = 0
-        self.wheel_speeds = [10.0, 10.0, 10.0, 10.0]  # Default 010.0
-        self.lfo_rates = [0.0, 0.0, 0.0, 0.0]  # Default 000.0
-        self.lfo_depths = [0.0, 0.0, 0.0, 0.0]  # Default 000.0
-        self.selected_wheel = 0
-        self.editing_speed = False
-        self.selected_param = 0
-        self.editing_lfo = False
-        self.system_paused = False
-        self.encoder_value = 0
-        self.ratios = [
-            [100, 100, 100, 100],
-            [50, 100, 150, 200],
-            [200, 150, 100, 50],
-            [75, 125, 175, 225],
-        ]
-        self.selected_ratio_index = 0
-        self.applying_ratio = False
-        self.apply_choice = 0
-        self.master_time = 1.00  # Default 001.00
-        self.editing_master = False
-        self.reset_choice = 0 # For YES/NO in RESET menu
+ menu
 
         # Create GUI elements
         self.display_label = tk.Label(root, text="", font=("Courier", 12), justify=tk.LEFT)
