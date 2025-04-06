@@ -1,0 +1,310 @@
+CYCLOID MACHINE: DESIGN DOCUMENT
+1. PROJECT OVERVIEW
+The Cycloid Machine is a 4-wheel stepper motor system designed to generate cycloidal patterns using mechanical linkages. It consists of three drive wheels (X, Y, Z) that control the machine's motion and a platen wheel (A) that holds linkages for drawing with a pen. The system is controlled through a menu interface displayed on a 16x2 LCD screen and navigated using a rotary encoder with a push button.
+1.1 Key Features
+Independent speed control for all four wheels (X, Y, Z, A)
+Low-Frequency Oscillator (LFO) modulation of wheel speeds
+Predefined ratio presets for artistic patterns
+Master time control for overall speed adjustment
+System pause/resume functionality
+Settings reset option
+2. HARDWARE SPECIFICATION
+2.1 Components
+| Component | Type/Model | Quantity | Description |
+|-----------|------------|----------|-------------|
+| Microcontroller | Arduino Uno | 1 | Main control unit |
+| Stepper Driver Shield | CNC Shield v3.0 | 1 | Interface for stepper motors |
+| Stepper Motor Drivers | A4988 or TMC2208 | 4 | Individual motor drivers |
+| Stepper Motors | NEMA17, 1.8°, 200 steps/rev | 4 | Actuators for wheels |
+| Rotary Encoder | With push button | 1 | User input device |
+| LCD Display | 16x2 I2C LCD | 1 | User interface display |
+| Power Supply | 12V, min 5A | 1 | Converted computer power supply |
+| Gearing | 1:3 ratio | 4 sets | Wheel-to-motor gearing |
+2.2 Pin Assignments
+2.2.1 Arduino to CNC Shield (Standard Connections)
+| Arduino Pin | Function | Description |
+|-------------|----------|-------------|
+| D2 | X_STEP_PIN | X axis step signal |
+| D3 | Y_STEP_PIN | Y axis step signal |
+| D4 | Z_STEP_PIN | Z axis step signal |
+| D5 | X_DIR_PIN | X axis direction |
+| D6 | Y_DIR_PIN | Y axis direction |
+| D7 | Z_DIR_PIN | Z axis direction |
+| D8 | ENABLE_PIN | Motor drivers enable (active LOW) |
+| D12 | A_STEP_PIN | A axis step signal |
+| D13 | A_DIR_PIN | A axis direction |
+2.2.2 Rotary Encoder Connections
+| Function | Arduino Pin | Description |
+|----------|-------------|-------------|
+| Encoder CLK | D9 | Encoder A signal (via limit switch pin on CNC Shield) |
+| Encoder DT | D10 | Encoder B signal (via limit switch pin on CNC Shield) |
+| Encoder SW | D11 | Encoder push button (via limit switch pin on CNC Shield) |
+2.2.3 I2C LCD Connections
+| Function | Arduino Pin | Description |
+|----------|-------------|-------------|
+| SDA | A4 | I2C data line |
+| SCL | A5 | I2C clock line |
+| VCC | 5V | Power supply |
+| GND | GND | Ground |
+2.3 Power Requirements
+Arduino: Powered via USB or external 7-12V supply
+CNC Shield and Motors: 12V DC from converted computer power supply
+Current requirements: Approximately 1A per motor at full load
+2.4 Mechanical Specifications
+Motor Step Resolution: 1.8° (200 steps per revolution)
+Gear Ratio: 1:3 (motor to wheel)
+Effective Steps per Wheel Revolution: 600 steps
+Future support for microstepping up to 128 microsteps (76,800 steps per revolution)
+3. SOFTWARE ARCHITECTURE
+3.1 Libraries Used
+| Library | Purpose |
+|---------|---------|
+| Wire.h | I2C communication for LCD |
+| LiquidCrystal_I2C.h | Interface for the I2C LCD display |
+| AccelStepper.h | Advanced stepper motor control |
+3.2 Key Constants
+| Constant | Value | Description |
+|----------|-------|-------------|
+| STEPS_PER_MOTOR_REV | 200 | Steps per motor revolution |
+| GEAR_RATIO | 3 | Mechanical gear reduction |
+| STEPS_PER_WHEEL_REV | 600 | Total steps per wheel revolution |
+| DEBOUNCE_TIME | 50 | Button debounce time in ms |
+| LONG_PRESS_TIME | 1000 | Long press detection threshold in ms |
+| MOTOR_UPDATE_INTERVAL | 5 | Motor speed update interval in ms |
+| LFO_RESOLUTION | 1000 | Resolution of LFO phase calculation |
+3.3 Data Structures
+3.3.1 Menu System
+| Variable | Type | Description |
+|----------|------|-------------|
+| currentMenu | byte | Current active menu (MAIN, SPEED, LFO, etc.) |
+| selectedOption | byte | Selected option in current menu |
+| systemPaused | bool | System pause state |
+3.3.2 Wheel Speed Parameters
+| Variable | Type | Description |
+|----------|------|-------------|
+| wheelSpeeds[4] | float | Speed values for each wheel (default: 10.0) |
+| selectedSpeedWheel | byte | Currently selected wheel in SPEED menu |
+| editingSpeed | bool | Flag for speed editing mode |
+3.3.3 LFO Parameters
+| Variable | Type | Description |
+|----------|------|-------------|
+| lfoDepths[4] | float | Depth values for each wheel's LFO (0.0-100.0%) |
+| lfoRates[4] | float | Rate values for each wheel's LFO (0.0-256.0) |
+| lfoPolarities[4] | bool | Polarity for each wheel's LFO (false=UNI, true=BI) |
+| selectedLfoParam | byte | Currently selected LFO parameter |
+| editingLfo | bool | Flag for LFO editing mode |
+| lfoPhases[4] | unsigned long | Current phase of each LFO cycle |
+3.3.4 Ratio Presets
+| Variable | Type | Description |
+|----------|------|-------------|
+| ratioPresets[4][4] | const float | Four ratio presets for the four wheels |
+| selectedRatioPreset | byte | Currently selected ratio preset |
+| confirmingRatio | bool | Flag for ratio confirmation dialog |
+| ratioChoice | bool | Apply ratio choice (false=NO, true=YES) |
+3.3.5 Master Time Control
+| Variable | Type | Description |
+|----------|------|-------------|
+| masterTime | float | Master time value in seconds (default: 1.00) |
+| editingMaster | bool | Flag for master time editing mode |
+3.3.6 Reset Functionality
+| Variable | Type | Description |
+|----------|------|-------------|
+| confirmingReset | bool | Flag for reset confirmation dialog |
+| resetChoice | bool | Reset choice (false=NO, true=YES) |
+3.4 Function Categories
+3.4.1 Setup and Initialization
+Initialize hardware components
+Set default values
+Configure pins and interrupts
+3.4.2 Input Handling
+Process encoder rotation
+Detect button presses (short and long)
+Respond to menu navigation
+3.4.3 Display Management
+Update LCD based on current menu and state
+Format values for display
+3.4.4 Motor Control
+Calculate and set motor speeds
+Apply LFO modulation
+Handle motor timing and stepping
+3.4.5 Serial Communication
+Process commands received via serial
+Provide status updates and debugging information
+4. MENU SYSTEM SPECIFICATION
+The menu system is designed for a 16x2 LCD (16 characters per line, 2 lines) and is controlled via rotary encoder with push button.
+4.1 Navigation Principles
+Rotary Encoder
+Turn clockwise/counterclockwise: Navigate through options or adjust values
+Short press: Select option or toggle edit mode
+Long press: Return to main menu or toggle system pause
+Display Indicators
+> symbol: Indicates current selection
+# symbol: Indicates edit mode is active
+4.2 Menu Structure
+4.2.1 MAIN Menu
+Options: SPEED, LFO, RATIO, MASTER, RESET
+Display format:
+>SPEED
+LFO RATIO MSTR
+Navigation: Turn encoder to cycle through options, short press to select
+Long press: Toggle system pause state
+4.2.2 SPEED Menu
+Purpose: Adjust individual wheel speeds
+Display format:
+SPEED: X
+Value: 010.0
+(When editing):
+SPEED: X#
+Value: 010.0
+Range: 0.1 to 256.0
+Default: 10.0
+Navigation: Turn encoder to select wheel or adjust value
+Short press: Toggle between wheel selection and value editing
+Long press: Return to main menu
+4.2.3 LFO Menu
+Purpose: Configure Low-Frequency Oscillator parameters
+Parameters per wheel: Depth, Rate, Polarity (UNI/BI)
+Display format (example for X Depth):
+LFO: X DPT
+Value: 030.0%
+(When editing):
+LFO: X DPT#
+Value: 030.0%
+Ranges:
+Depth: 0.0% to 100.0%
+Rate: 0.0 to 256.0
+Polarity: UNI or BI
+Defaults:
+Depth: 0.0%
+Rate: 0.0
+Polarity: UNI
+Navigation: Turn encoder to cycle through parameters or adjust values
+Short press: Toggle between parameter selection and value editing
+Long press: Return to main menu
+4.2.4 RATIO Menu
+Purpose: Apply predefined speed ratios to wheels
+Display format:
+RATIO PRESET: 1
+100:100:100:100
+(Confirmation screen):
+APPLY RATIO?
+>NO YES
+Presets:
+Equal ratios: 100:100:100:100
+Increasing: 50:100:150:200
+Decreasing: 200:150:100:50
+Custom: 75:125:175:225
+Navigation: Turn encoder to cycle through presets
+Short press: Enter confirmation screen
+In confirmation: Turn encoder to select YES/NO, short press to confirm
+Long press: Return to main menu
+4.2.5 MASTER Menu
+Purpose: Adjust master time multiplier
+Display format:
+MASTER TIME:
+Value: 001.00 S
+(When editing):
+MASTER TIME:#
+Value: 001.00 S
+Range: 0.01 to 999.99 seconds
+Default: 1.00 second
+Navigation: Turn encoder to adjust value (when editing)
+Short press: Toggle editing mode
+Long press: Return to main menu
+4.2.6 RESET Menu
+Purpose: Reset all settings to defaults
+Display format:
+RESET TO DEFLT?
+>NO YES
+Navigation: Turn encoder to select YES/NO, short press to confirm
+Long press: Return to main menu without resetting
+4.2.7 System Pause Display
+Activated by long press in main menu
+Display format:
+SYSTEM
+* PAUSED *
+When paused, all motors stop
+Another long press resumes operation
+5. SPEED CALCULATION AND MODULATION
+5.1 Base Speed Calculation
+The system uses an inverse relationship for speed values:
+Higher speed value = slower wheel rotation
+Lower speed value = faster wheel rotation
+Formula:
+Steps per second = (Steps per wheel revolution) / (masterTime * wheelSpeed)
+Where:
+Steps per wheel revolution = 600 (200 steps/rev * 3 gear ratio)
+masterTime = time in seconds for one full rotation at speed 1.0
+wheelSpeed = user-set parameter (range 0.1-256.0)
+Examples:
+wheelSpeed = 1.0, masterTime = 1.0:
+600 / (1.0 * 1.0) = 600 steps/sec = 1 rotation per second
+wheelSpeed = 10.0, masterTime = 1.0:
+600 / (1.0 * 10.0) = 60 steps/sec = 0.1 rotations per second
+wheelSpeed = 10.0, masterTime = 2.0:
+600 / (2.0 * 10.0) = 30 steps/sec = 0.05 rotations per second
+5.2 LFO Modulation
+LFO modulates the wheel speed using sine wave oscillation:
+Calculation Steps:
+Determine current LFO phase (0-999, mapped to 0-2π)
+Calculate sine value (-1.0 to 1.0)
+Apply depth and polarity adjustments
+Unipolar Modulation (UNI):
+Modulation = baseSpeed * (depth/100) * (sin(phase) + 1) / 2
+finalSpeed = baseSpeed - modulation (never goes negative/reverses)
+Bipolar Modulation (BI):
+Modulation = baseSpeed * (depth/100) * sin(phase)
+finalSpeed = baseSpeed + modulation
+5.3 LFO Rate Calculation
+Rate value determines the frequency of oscillation
+Rate 1.0 = 1 complete cycle in masterTime seconds
+Rate 10.0 = 1/10 cycle in masterTime seconds (slower)
+Phase Update Formula:
+phaseIncrement = (updateInterval/1000) * (1/(masterTimelfoRate)) phaseResolution
+6. SERIAL COMMAND INTERFACE
+6.1 Command Syntax
+The system accepts serial commands at 9600 baud with the following format:
+COMMAND [PARAMETER1] [PARAMETER2] [VALUE]
+6.2 Available Commands
+| Command | Parameters | Example | Description |
+|---------|------------|---------|-------------|
+| HELP | none | HELP | Display available commands |
+| STATUS | none | STATUS | Show current system status |
+| PAUSE | none | PAUSE | Pause the system |
+| RESUME | none | RESUME | Resume the system |
+| RESET | none | RESET | Reset to default values |
+| SPEED | X/Y/Z/A, value | SPEED X 15.2 | Set wheel speed |
+| LFO | X/Y/Z/A, DEPTH/RATE/POL, value | LFO X DEPTH 50.0 | Set LFO parameter |
+| MASTER | value | MASTER 2.5 | Set master time |
+| RATIO | preset number | RATIO 2 | Apply ratio preset |
+7. FUTURE IMPROVEMENTS
+7.1 Hardware Extensions
+Implementation of 128 microstepping for finer motor control
+Addition of emergency stop button
+EEPROM storage for saving user presets
+External SD card for pattern storage
+End stops or limit switches for homing and safety
+7.2 Software Enhancements
+User-definable ratio presets
+Pattern recording and playback
+Advanced modulation patterns beyond sine wave
+Motor acceleration control for smoother operation
+WiFi/Bluetooth connectivity for remote control
+Computer interface for pattern design
+8. SAFETY CONSIDERATIONS
+Motor current limiting to prevent overheating
+Thermal protection via driver settings
+Software limits on speed changes to prevent mechanical shock
+Monitoring of power supply voltage
+Safe shutdown procedure in case of power loss
+9. MAINTENANCE AND CALIBRATION
+9.1 Regular Maintenance
+Check motor temperature during extended operation
+Inspect mechanical connections and gear mesh
+Verify encoder functionality and clean if necessary
+Check power supply output voltage
+9.2 Calibration Procedure
+Verify expected steps per revolution
+Check gearing ratio accuracy
+Calibrate LFO timing against external reference
+Validate actual wheel speeds against settings
