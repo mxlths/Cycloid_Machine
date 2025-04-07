@@ -36,6 +36,16 @@
 #define LCD_COLS 16
 #define LCD_ROWS 2
 
+// Microstepping configuration
+#define MICROSTEP_FULL 1       // Full step mode (default)
+#define MICROSTEP_HALF 2       // Half step mode
+#define MICROSTEP_QUARTER 4    // Quarter step mode
+#define MICROSTEP_EIGHTH 8     // Eighth step mode
+#define MICROSTEP_SIXTEENTH 16 // Sixteenth step mode
+#define MICROSTEP_32 32        // 32 microsteps (TMC2208 only)
+#define MICROSTEP_64 64        // 64 microsteps (TMC2208 only)
+#define MICROSTEP_128 128      // 128 microsteps (TMC2208 only)
+
 // Motor Configuration
 #define STEPS_PER_MOTOR_REV 200 // 1.8° stepper motors
 #define GEAR_RATIO 3            // 1:3 gear reduction
@@ -50,7 +60,8 @@
 #define MENU_LFO 2
 #define MENU_RATIO 3
 #define MENU_MASTER 4
-#define MENU_RESET 5
+#define MENU_MICROSTEP 5
+#define MENU_RESET 6
 
 // Button Timing Constants
 #define DEBOUNCE_TIME 50    // ms
@@ -74,6 +85,13 @@ AccelStepper motorA(1, A_STEP_PIN, A_DIR_PIN);
 AccelStepper motors[MOTORS_COUNT] = {motorX, motorY, motorZ, motorA};
 
 // ===== SYSTEM VARIABLES =====
+// Microstepping Variables
+byte currentMicrostepMode = MICROSTEP_FULL; // Default to full step mode
+bool editingMicrostep = false;              // Flag for editing mode
+const byte validMicrosteps[] = {1, 2, 4, 8, 16, 32, 64, 128};
+const byte microstepCount = 8;
+byte currentMicrostepIndex = 0; // Index in validMicrosteps array
+
 // Menu State Variables
 byte currentMenu = MENU_MAIN; // Current active menu
 byte selectedOption = 0;      // Selected option in current menu
@@ -144,6 +162,8 @@ void processSerialCommands();
 void parseAndExecuteCommand(char* cmd);
 void showHelp();
 void showStatus();
+bool updateMicrostepMode(byte newMode);
+unsigned long getStepsPerWheelRev();
 
 // ===== SETUP FUNCTION =====
 void setup() {
@@ -249,8 +269,8 @@ void updateEncoderPosition() {
 void handleEncoderChange(int change) {
   switch (currentMenu) {
     case MENU_MAIN:
-      // In main menu, cycle through options (0-4)
-      selectedOption = (selectedOption + change + 5) % 5;
+      // In main menu, cycle through options (0-5)
+      selectedOption = (selectedOption + change + 6) % 6;
       break;
       
     case MENU_SPEED:
@@ -312,6 +332,28 @@ void handleEncoderChange(int change) {
         masterTime += change * 0.01;
         if (masterTime < 0.01) masterTime = 0.01;
         if (masterTime > 999.99) masterTime = 999.99;
+      }
+      break;
+      
+    case MENU_MICROSTEP:
+      if (editingMicrostep) {
+        // Find current index in the validMicrosteps array
+        for (byte i = 0; i < microstepCount; i++) {
+          if (validMicrosteps[i] == currentMicrostepMode) {
+            currentMicrostepIndex = i;
+            break;
+          }
+        }
+        
+        // Adjust the index based on encoder change
+        if (change > 0) {
+          currentMicrostepIndex = (currentMicrostepIndex + 1) % microstepCount;
+        } else if (change < 0) {
+          currentMicrostepIndex = (currentMicrostepIndex + microstepCount - 1) % microstepCount;
+        }
+        
+        // Update the microstepping mode from the index
+        currentMicrostepMode = validMicrosteps[currentMicrostepIndex];
       }
       break;
       
@@ -392,6 +434,11 @@ void handleShortPress() {
       editingMaster = !editingMaster;
       break;
       
+    case MENU_MICROSTEP:
+      // Toggle editing mode
+      editingMicrostep = !editingMicrostep;
+      break;
+      
     case MENU_RESET:
       // Apply reset if YES is selected
       if (resetChoice) {
@@ -415,6 +462,14 @@ void handleLongPress() {
         motors[i].stop();
       }
     }
+  } else if (currentMenu == MENU_MICROSTEP) {
+    // Apply microstepping change on long press
+    updateMicrostepMode(currentMicrostepMode);
+    
+    // Return to main menu
+    currentMenu = MENU_MAIN;
+    selectedOption = 0;
+    editingMicrostep = false;
   } else {
     // Return to main menu from any submenu
     currentMenu = MENU_MAIN;
@@ -441,15 +496,15 @@ void updateDisplay() {
         lcd.print(F("* PAUSED *"));
       } else {
         // Display main menu options
-        const char* menuOptions[] = {"SPEED", "LFO", "RATIO", "MSTR", "RESET"};
+        const char* menuOptions[] = {"SPEED", "LFO", "RATIO", "MSTR", "MICROSTEP", "RESET"};
         lcd.setCursor(0, 0);
         lcd.print('>');
         lcd.print(menuOptions[selectedOption]);
         
         // Show other options on second line
         lcd.setCursor(0, 1);
-        for (byte i = 0; i < 4; i++) {
-          byte optIndex = (selectedOption + i + 1) % 5;
+        for (byte i = 0; i < 3; i++) {
+          byte optIndex = (selectedOption + i + 1) % 6;
           lcd.print(menuOptions[optIndex]);
           lcd.print(' ');
         }
@@ -556,6 +611,18 @@ void updateDisplay() {
       lcd.print(F(" S"));
       break;
       
+    case MENU_MICROSTEP:
+      // Display microstepping configuration
+      lcd.setCursor(0, 0);
+      lcd.print(F("MICROSTEP:"));
+      if (editingMicrostep) lcd.print('#');
+      
+      lcd.setCursor(0, 1);
+      lcd.print(F("Value: "));
+      lcd.print(currentMicrostepMode);
+      lcd.print(F("x"));
+      break;
+      
     case MENU_RESET:
       // Display reset confirmation screen
       lcd.setCursor(0, 0);
@@ -576,12 +643,12 @@ void updateMotorSpeeds() {
       baseSpeed += calculateLfoModulation(i);
     }
     
-    // Calculate steps per second
-    float stepsPerSecond = (float)STEPS_PER_WHEEL_REV / (masterTime * baseSpeed);
+    // Calculate steps per second, accounting for microstepping
+    float stepsPerSecond = (float)getStepsPerWheelRev() / (masterTime * baseSpeed);
     
     // Ensure speed is within valid range
     if (stepsPerSecond < 0.1) stepsPerSecond = 0.1;
-    if (stepsPerSecond > 2000) stepsPerSecond = 2000;
+    if (stepsPerSecond > 2000 * currentMicrostepMode) stepsPerSecond = 2000 * currentMicrostepMode;
     
     // Update motor speed
     motors[i].setSpeed(stepsPerSecond);
@@ -633,6 +700,8 @@ void resetToDefaults() {
   
   // Reset other parameters
   masterTime = 1.00;
+  currentMicrostepMode = MICROSTEP_FULL;
+  updateMicrostepMode(MICROSTEP_FULL);
   
   // Reset menu state
   currentMenu = MENU_MAIN;
@@ -640,12 +709,14 @@ void resetToDefaults() {
   selectedSpeedWheel = 0;
   selectedLfoParam = 0;
   selectedRatioPreset = 0;
+  currentMicrostepIndex = 0;
   
   // Reset editing states
   editingSpeed = false;
   editingLfo = false;
   confirmingRatio = false;
   editingMaster = false;
+  editingMicrostep = false;
   confirmingReset = false;
   resetChoice = false;
   
@@ -710,6 +781,22 @@ void parseAndExecuteCommand(char* cmd) {
     } else if (strcmp(token, "RESET") == 0) {
       resetToDefaults();
       
+    } else if (strcmp(token, "MICROSTEP") == 0) {
+      // MICROSTEP value
+      char* valueToken = strtok(NULL, " ");
+      
+      if (valueToken) {
+        int value = atoi(valueToken);
+        if (updateMicrostepMode(value)) {
+          Serial.print(F("Set microstepping mode to "));
+          Serial.print(currentMicrostepMode);
+          Serial.println(F("x"));
+        } else {
+          Serial.println(F("Invalid microstepping mode (use 1, 2, 4, 8, 16, 32, 64, or 128)"));
+        }
+      } else {
+        Serial.println(F("Usage: MICROSTEP value (1, 2, 4, 8, 16, 32, 64, or 128)"));
+      }
     } else if (strcmp(token, "SPEED") == 0) {
       // SPEED X/Y/Z/A value
       char* wheelToken = strtok(NULL, " ");
@@ -855,6 +942,7 @@ void showHelp() {
   Serial.println(F("LFO X/Y/Z/A POL val   - Set LFO polarity (0=UNI, 1=BI)"));
   Serial.println(F("MASTER val        - Set master time (0.01-999.99)"));
   Serial.println(F("RATIO val         - Apply ratio preset (1-4)"));
+  Serial.println(F("MICROSTEP val     - Set microstepping mode (1, 2, 4, 8, 16, 32, 64, or 128)"));
   Serial.println(F("==============================\n"));
 }
 
@@ -866,6 +954,10 @@ void showStatus() {
   Serial.print(F("Master time: "));
   Serial.print(masterTime);
   Serial.println(F(" seconds"));
+  
+  Serial.print(F("Microstepping: "));
+  Serial.print(currentMicrostepMode);
+  Serial.println(F("x"));
   
   Serial.println(F("\nWheel speeds:"));
   for (byte i = 0; i < MOTORS_COUNT; i++) {
@@ -889,4 +981,33 @@ void showStatus() {
     Serial.println();
   }
   Serial.println(F("==============================\n"));
+}
+
+bool updateMicrostepMode(byte newMode) {
+  // Check if the mode is valid (must be a power of 2 up to 128)
+  if (newMode != 1 && newMode != 2 && newMode != 4 && newMode != 8 && 
+      newMode != 16 && newMode != 32 && newMode != 64 && newMode != 128) {
+    Serial.println(F("Invalid microstepping mode"));
+    return false;
+  }
+  
+  // Store the new microstepping mode
+  currentMicrostepMode = newMode;
+  
+  // Reconfigure motor parameters for new step resolution
+  for (byte i = 0; i < MOTORS_COUNT; i++) {
+    float maxSpeed = 2000.0 * currentMicrostepMode;
+    motors[i].setMaxSpeed(maxSpeed);
+    motors[i].setAcceleration(500 * currentMicrostepMode);
+  }
+  
+  Serial.print(F("Microstepping mode set to "));
+  Serial.print(currentMicrostepMode);
+  Serial.println(F("x"));
+  
+  return true;
+}
+
+unsigned long getStepsPerWheelRev() {
+  return STEPS_PER_MOTOR_REV * GEAR_RATIO * currentMicrostepMode;
 } 

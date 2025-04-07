@@ -9,22 +9,30 @@
 
 #include "Config.h"
 
-// Menu system functions
+// LCD display functions
 void setupLCD();
 void updateDisplay();
+
+// Menu navigation functions
+void initializeMenu();
 void enterSubmenu(byte menu);
 void returnToMainMenu();
-
-// Menu navigation handlers
 void handleMenuNavigation(int change);
 void handleMenuSelection();
 void handleMenuReturn();
 
-// Menu specific handlers
+// Submenu handler functions
 void handleSpeedMenu(int change);
 void handleLfoMenu(int change);
 void handleRatioMenu(int change);
 void handleMasterMenu(int change);
+void handleMicrostepMenu(int change);
 void handleResetMenu(int change);
+
+// External variable declarations
+extern bool editingMicrostep;
+extern const byte validMicrosteps[];
+extern const byte microstepCount;
+extern byte currentMicrostepIndex;
 
 #endif // MENU_SYSTEM_H 

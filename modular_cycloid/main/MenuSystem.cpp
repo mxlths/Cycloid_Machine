@@ -7,6 +7,12 @@
 #include "MenuSystem.h"
 #include "MotorControl.h"
 
+// Variables for microstepping menu
+bool editingMicrostep = false;
+const byte validMicrosteps[] = {1, 2, 4, 8, 16, 32, 64, 128};
+const byte microstepCount = 8;
+byte currentMicrostepIndex = 0; // Index in validMicrosteps array
+
 // Initialize the LCD
 void setupLCD() {
   Wire.begin();
@@ -43,17 +49,21 @@ void updateDisplay() {
             break;
           case 1:
             strcpy(line1, ">LFO");
-            strcpy(line2, " RATIO MSTR RST");
+            strcpy(line2, " RATIO MSTR STEP");
             break;
           case 2:
             strcpy(line1, ">RATIO");
-            strcpy(line2, " MSTR RST SPEED");
+            strcpy(line2, " MSTR STEP RST");
             break;
           case 3:
             strcpy(line1, ">MASTER");
-            strcpy(line2, " RST SPEED LFO");
+            strcpy(line2, " STEP RST SPEED");
             break;
           case 4:
+            strcpy(line1, ">MICROSTEP");
+            strcpy(line2, " RST SPEED LFO");
+            break;
+          case 5:
             strcpy(line1, ">RESET");
             strcpy(line2, " SPEED LFO RATIO");
             break;
@@ -132,6 +142,16 @@ void updateDisplay() {
         sprintf(line2, "Value: %06.2f S", masterTime);
         break;
         
+      case MENU_MICROSTEP:
+        // Show microstepping configuration
+        if (editingMicrostep) {
+          strcpy(line1, "MICROSTEP:#");
+        } else {
+          strcpy(line1, "MICROSTEP:");
+        }
+        sprintf(line2, "Value: %dx", currentMicrostepMode);
+        break;
+        
       case MENU_RESET:
         if (confirmingReset) {
           strcpy(line1, "RESET TO DEFLT?");
@@ -184,6 +204,10 @@ void enterSubmenu(byte menu) {
       editingMaster = false;
       break;
       
+    case MENU_MICROSTEP:
+      editingMicrostep = false;
+      break;
+      
     case MENU_RESET:
       confirmingReset = true;  // Start with confirmation dialog
       resetChoice = false;     // Default to NO
@@ -212,7 +236,7 @@ void handleMenuNavigation(int change) {
   switch (currentMenu) {
     case MENU_MAIN:
       // Cycle through main menu options
-      selectedOption = (selectedOption + 5 + change) % 5;  // +5 to avoid negative values
+      selectedOption = (selectedOption + 6 + change) % 6;  // 6 options total
       break;
       
     case MENU_SPEED:
@@ -229,6 +253,10 @@ void handleMenuNavigation(int change) {
       
     case MENU_MASTER:
       handleMasterMenu(change);
+      break;
+      
+    case MENU_MICROSTEP:
+      handleMicrostepMenu(change);
       break;
       
     case MENU_RESET:
@@ -281,6 +309,11 @@ void handleMenuSelection() {
       editingMaster = !editingMaster;
       break;
       
+    case MENU_MICROSTEP:
+      // Toggle editing mode
+      editingMicrostep = !editingMicrostep;
+      break;
+      
     case MENU_RESET:
       if (confirmingReset) {
         // Process confirmation choice
@@ -309,8 +342,14 @@ void handleMenuReturn() {
       // Stop all motors when paused
       stopAllMotors();
     }
+  } else if (currentMenu == MENU_MICROSTEP) {
+    // Apply microstepping change on long press
+    updateMicrostepMode(currentMicrostepMode);
+    
+    // Return to main menu
+    returnToMainMenu();
   } else {
-    // Return to main menu from any submenu
+    // Return to main menu from any other submenu
     returnToMainMenu();
   }
   
@@ -375,6 +414,29 @@ void handleMasterMenu(int change) {
     // Constrain to valid range
     if (masterTime < 0.01) masterTime = 0.01;
     if (masterTime > 999.99) masterTime = 999.99;
+  }
+}
+
+// Handle MICROSTEP menu navigation
+void handleMicrostepMenu(int change) {
+  if (editingMicrostep) {
+    // Find current index in the validMicrosteps array
+    for (byte i = 0; i < microstepCount; i++) {
+      if (validMicrosteps[i] == currentMicrostepMode) {
+        currentMicrostepIndex = i;
+        break;
+      }
+    }
+    
+    // Adjust the index based on encoder change
+    if (change > 0) {
+      currentMicrostepIndex = (currentMicrostepIndex + 1) % microstepCount;
+    } else if (change < 0) {
+      currentMicrostepIndex = (currentMicrostepIndex + microstepCount - 1) % microstepCount;
+    }
+    
+    // Update the microstepping mode from the index
+    currentMicrostepMode = validMicrosteps[currentMicrostepIndex];
   }
 }
 

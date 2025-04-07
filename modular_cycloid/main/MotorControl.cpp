@@ -7,12 +7,18 @@
 #include "MotorControl.h"
 #include <math.h>
 
+// Define variables for motor control
+unsigned long lastMotorUpdateTime = 0;
+byte currentMicrostepMode = MICROSTEP_FULL;  // Default to full step mode
+
 // Initialize the stepper motors
 void setupMotors() {
   // Configure stepper motor drivers
   for (byte i = 0; i < MOTORS_COUNT; i++) {
-    steppers[i]->setMaxSpeed(10000);  // Set a high maximum (will be limited by setSpeed)
-    steppers[i]->setAcceleration(500);
+    // Higher max speed is needed with microstepping
+    float maxSpeed = 10000.0 * currentMicrostepMode;
+    steppers[i]->setMaxSpeed(maxSpeed);
+    steppers[i]->setAcceleration(500 * currentMicrostepMode);
   }
   
   // Enable motor drivers
@@ -20,11 +26,59 @@ void setupMotors() {
   digitalWrite(ENABLE_PIN, LOW);  // LOW = enabled
 }
 
+// Update microstepping mode
+bool updateMicrostepMode(byte newMode) {
+  // Check if the mode is valid (must be a power of 2 up to 128)
+  if (newMode != 1 && newMode != 2 && newMode != 4 && newMode != 8 && 
+      newMode != 16 && newMode != 32 && newMode != 64 && newMode != 128) {
+    Serial.println(F("Invalid microstepping mode"));
+    return false;
+  }
+  
+  // Store the new microstepping mode
+  currentMicrostepMode = newMode;
+  
+  // Reconfigure motor parameters for new step resolution
+  for (byte i = 0; i < MOTORS_COUNT; i++) {
+    float maxSpeed = 10000.0 * currentMicrostepMode;
+    steppers[i]->setMaxSpeed(maxSpeed);
+    steppers[i]->setAcceleration(500 * currentMicrostepMode);
+  }
+  
+  Serial.print(F("Microstepping mode set to "));
+  Serial.print(currentMicrostepMode);
+  Serial.println(F("x"));
+  
+  return true;
+}
+
 // Stop all motors
 void stopAllMotors() {
   for (byte i = 0; i < MOTORS_COUNT; i++) {
     steppers[i]->setSpeed(0);
   }
+}
+
+// Update motors - main control function called from loop
+void updateMotors(unsigned long currentMillis) {
+  // Skip if paused
+  if (systemPaused) return;
+  
+  // Update speeds periodically
+  if (currentMillis - lastMotorUpdateTime >= MOTOR_UPDATE_INTERVAL) {
+    updateMotorSpeeds();
+    lastMotorUpdateTime = currentMillis;
+  }
+  
+  // Run each motor
+  for (byte i = 0; i < MOTORS_COUNT; i++) {
+    steppers[i]->runSpeed();
+  }
+}
+
+// Calculate steps per revolution with microstepping
+unsigned long getStepsPerWheelRev() {
+  return STEPS_PER_MOTOR_REV * GEAR_RATIO * currentMicrostepMode;
 }
 
 // Update motor speeds based on current settings
@@ -49,10 +103,10 @@ void updateMotorSpeeds() {
       }
     }
     
-    // Convert speed parameter to actual steps per second
+    // Convert speed parameter to actual steps per second, accounting for microstepping
     // Speed 1.0 = 1 rotation in masterTime seconds
     // Speed 10.0 = 1/10 rotation in masterTime seconds
-    float stepsPerSecond = STEPS_PER_WHEEL_REV / (masterTime * baseSpeed);
+    float stepsPerSecond = getStepsPerWheelRev() / (masterTime * baseSpeed);
     
     // Set motor speed
     currentSpeeds[i] = stepsPerSecond;

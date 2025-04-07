@@ -44,6 +44,21 @@ void processSerialCommands() {
     else if (command == "RESET") {
       resetToDefaults();
     }
+    else if (command.startsWith("MICROSTEP ")) {
+      // Parse "MICROSTEP value" format
+      if (command.length() >= 11) {
+        int value = command.substring(10).toInt();
+        if (updateMicrostepMode(value)) {
+          Serial.print(F("Set microstepping mode to "));
+          Serial.print(currentMicrostepMode);
+          Serial.println(F("x"));
+        } else {
+          Serial.println(F("Invalid microstepping mode (use 1, 2, 4, 8, 16, 32, 64, or 128)"));
+        }
+      } else {
+        Serial.println(F("Invalid MICROSTEP command format"));
+      }
+    }
     else if (command.startsWith("SPEED ")) {
       // Parse "SPEED X value" format
       if (command.length() >= 8) {
@@ -173,6 +188,10 @@ void printSystemStatus() {
   Serial.print(F("Master Time: "));
   Serial.println(masterTime);
   
+  Serial.print(F("Microstepping: "));
+  Serial.print(currentMicrostepMode);
+  Serial.println(F("x"));
+  
   Serial.println(F("\nWheel Speeds:"));
   for (byte i = 0; i < MOTORS_COUNT; i++) {
     Serial.print(wheelLabels[i]);
@@ -213,6 +232,7 @@ void printHelp() {
   Serial.println(F("PAUSE - Pause the system"));
   Serial.println(F("RESUME - Resume the system"));
   Serial.println(F("RESET - Reset to default values"));
+  Serial.println(F("MICROSTEP value - Set microstepping mode (1, 2, 4, 8, 16, 32, 64, 128)"));
   Serial.println(F("SPEED X value - Set X wheel speed (0.1-256.0)"));
   Serial.println(F("SPEED Y value - Set Y wheel speed"));
   Serial.println(F("SPEED Z value - Set Z wheel speed"));

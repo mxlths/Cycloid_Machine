@@ -36,6 +36,19 @@
 #define LCD_ROWS 2
 #define LCD_I2C_ADDR 0x27  // Change to 0x3F if needed
 
+// Microstepping configuration
+#define MICROSTEP_FULL 1       // Full step mode (default)
+#define MICROSTEP_HALF 2       // Half step mode
+#define MICROSTEP_QUARTER 4    // Quarter step mode
+#define MICROSTEP_EIGHTH 8     // Eighth step mode
+#define MICROSTEP_SIXTEENTH 16 // Sixteenth step mode
+#define MICROSTEP_32 32        // 32 microsteps (TMC2208 only)
+#define MICROSTEP_64 64        // 64 microsteps (TMC2208 only)
+#define MICROSTEP_128 128      // 128 microsteps (TMC2208 only)
+
+// Current microstepping mode (will be stored as a variable, not a constant)
+extern byte currentMicrostepMode;
+
 #define STEPS_PER_MOTOR_REV 200  // 1.8° stepper motors
 #define GEAR_RATIO 3             // 1:3 gear reduction
 #define STEPS_PER_WHEEL_REV (STEPS_PER_MOTOR_REV * GEAR_RATIO) // 600 steps
@@ -48,7 +61,8 @@
 #define MENU_LFO 2
 #define MENU_RATIO 3
 #define MENU_MASTER 4
-#define MENU_RESET 5
+#define MENU_MICROSTEP 5
+#define MENU_RESET 6
 
 // Button timing
 #define DEBOUNCE_TIME 50        // ms
