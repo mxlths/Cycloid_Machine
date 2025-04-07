@@ -7,13 +7,21 @@
 #ifndef SERIAL_INTERFACE_H
 #define SERIAL_INTERFACE_H
 
-// #include "Config.h" // Config likely not needed directly here anymore
-#include <Arduino.h> // Include base Arduino types (like bool)
+#include "Config.h"
 
-// Serial interface functions
-void setupSerial();
+// Initialize serial communication
+void setupSerialCommands();
+
+// Process any available serial commands
 void processSerialCommands();
+
+// Execute a specific command
+void executeCommand(char* command);
+
+// Print system status
 void printSystemStatus();
+
+// Print help information
 void printHelp();
 
 #endif // SERIAL_INTERFACE_H 

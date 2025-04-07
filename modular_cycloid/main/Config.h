@@ -73,6 +73,54 @@ enum MenuState {
 // LFO resolution
 #define LFO_RESOLUTION 1000     // Phase resolution for smoother LFO
 
+// --- SYSTEM CONFIGURATION ---
+#define SERIAL_BAUD 115200
+#define LCD_I2C_ADDR 0x27
+#define LCD_COLS 16
+#define LCD_ROWS 2
+#define MAX_BUFFER_SIZE 256
+
+// --- MENU CONFIGURATION ---
+enum MenuState {
+  MENU_MAIN,
+  MENU_SPEED,
+  MENU_LFO,
+  MENU_RATIO,
+  MENU_MASTER,
+  MENU_MICROSTEP,
+  MENU_RESET
+};
+
+// --- MOTOR CONFIGURATION ---
+#define MOTORS_COUNT 4  // Number of motors in the system
+
+// --- RATIO PRESETS CONFIGURATION ---
+#define NUM_RATIO_PRESETS 4
+// Ratio presets define the relative speeds between motors
+const float RATIO_PRESETS[NUM_RATIO_PRESETS][MOTORS_COUNT] = {
+  {1.0, 1.0, 1.0, 1.0},    // Preset 1: 1:1:1:1 (All equal)
+  {1.0, 2.0, 3.0, 4.0},    // Preset 2: 1:2:3:4 (Linear progression)
+  {1.0, -1.0, 1.0, -1.0},  // Preset 3: 1:-1:1:-1 (Alternating directions)
+  {1.0, 1.5, 2.25, 3.375}  // Preset 4: Geometric progression (1:1.5:2.25:3.375)
+};
+
+// --- LFO CONFIGURATION ---
+#define LFO_DEPTH_MAX 100   // Maximum LFO depth as a percentage
+#define LFO_RATE_MAX 10     // Maximum LFO rate in Hz
+#define LFO_UPDATE_INTERVAL 5 // Update interval in milliseconds
+
+// --- MICROSTEPPING CONFIGURATION ---
+#define NUM_VALID_MICROSTEPS 8
+const int VALID_MICROSTEPS[NUM_VALID_MICROSTEPS] = {1, 2, 4, 8, 16, 32, 64, 128};
+
+// --- DEFAULT VALUES ---
+#define DEFAULT_MASTER_SPEED 60 // Default master speed in RPM
+#define DEFAULT_SPEED_RATIO 1.0 // Default ratio for all motors
+#define DEFAULT_LFO_DEPTH 0     // Default LFO depth (0 = off)
+#define DEFAULT_LFO_RATE 1      // Default LFO rate in Hz
+#define DEFAULT_LFO_POLARITY 1  // Default LFO polarity (1 = positive)
+#define DEFAULT_MICROSTEP 16    // Default microstepping mode
+
 // ---- EXTERNAL DECLARATIONS ----
 
 // LCD display

@@ -1,16 +1,25 @@
 /**
- * Cycloid Machine - Main Program
+ * Modular Cycloid Machine Control
  * 
- * An Arduino-based control system for a modular Cycloid Machine
- * that controls four stepper motors with adjustable speed ratios,
- * LFO modulation, and a user interface with encoder navigation.
+ * Main program for the Arduino-based Cycloid Machine controller
+ * Controls 4 stepper motors with individual speed control and LFO modulation
  */
 
+#include <Arduino.h>
+#include <Wire.h>
+#include <AccelStepper.h>
+#include <LiquidCrystal_I2C.h>
+
 #include "Config.h"
-#include "MenuSystem.h"
 #include "MotorControl.h"
+#include "MenuSystem.h"
 #include "InputHandling.h"
 #include "SerialInterface.h"
+
+// Debug flags - uncomment to enable debug output
+// #define DEBUG_TIMING
+// #define DEBUG_INPUT
+// #define DEBUG_MOTORS
 
 // Global Definitions (Hardware Objects)
 // These were previously extern in Config.h, need definition here or in a dedicated globals.cpp
@@ -22,45 +31,77 @@ AccelStepper stepperA(AccelStepper::DRIVER, A_STEP_PIN, A_DIR_PIN);
 AccelStepper* steppers[MOTORS_COUNT] = {&stepperX, &stepperY, &stepperZ, &stepperA};
 const char* wheelLabels[MOTORS_COUNT] = {"X", "Y", "Z", "A"};
 
-// Timing for serial check (can remain global or move)
-unsigned long serialCheckInterval = 250; // Check serial every 250ms
-unsigned long lastSerialCheck = 0;
+// Timing variables
+unsigned long currentMillis = 0;
+unsigned long lastSerialStatusTime = 0;
 
+// Setup function - called once at startup
 void setup() {
-  setupSerial();
+  // Initialize serial communication
+  Serial.begin(SERIAL_BAUD);
+  Serial.println(F("\nCycloid Machine Controller v1.1"));
+  Serial.println(F("Initializing..."));
+  
+  // Initialize systems in order
   setupMotors();
-  setupEncoder();
-  setupLCD(); // Added LCD setup call
-  initializeMenu();
+  setupLCD();
+  setupEncoders();
+  setupSerialCommands();
   
-  // REMOVE global reset call - Modules initialize their own defaults
-  // resetToDefaults(); 
+  // Show initial display
+  updateDisplay();
   
-  delay(100); // Short delay for stability
-  Serial.println(F("System Initialized."));
+  Serial.println(F("Initialization complete"));
+  Serial.println(F("Type 'help' for available commands"));
 }
 
+// Loop function - called repeatedly after setup
 void loop() {
-  unsigned long currentMillis = millis();
+  // Get current time
+  currentMillis = millis();
   
-  // --- Input and Command Processing ---
-  checkButtonPress(); // Handles button, potentially changes MenuSystem's pause state
+  // Process serial commands
+  processSerialCommands();
   
-  // Process serial commands periodically
-  if (currentMillis - lastSerialCheck >= serialCheckInterval) {
-    processSerialCommands(); // Reads serial, potentially calls MenuSystem::setSystemPaused
-    lastSerialCheck = currentMillis;
+  // Get system paused state from MenuSystem
+  bool paused = getSystemPaused();
+  
+  // Update motor speeds if not paused
+  updateMotors(currentMillis, paused);
+  
+  // Check and handle encoder/button inputs
+  checkEncoders();
+  
+  // Print status at regular intervals
+  if (currentMillis - lastSerialStatusTime >= 2000) {
+    #ifdef DEBUG_TIMING
+    Serial.print(F("Loop time (ms): "));
+    Serial.println(millis() - currentMillis);
+    #endif
+    
+    #ifdef DEBUG_MOTORS
+    printSystemStatus();
+    #endif
+    
+    lastSerialStatusTime = currentMillis;
   }
+}
 
-  // --- Motor Update ---
-  // Get the current pause state from MenuSystem
-  bool isPaused = getSystemPaused(); 
-  updateMotors(currentMillis, isPaused); 
+// Function to update motor speed display and actual motor speeds
+void updateMotorSpeeds() {
+  // Update LCD with current speeds
+  updateDisplay();
   
-  // --- Display Update ---
-  // MenuSystem's updateDisplay already checks its internal pause state
-  updateDisplay(); 
-  
-  // Small delay
-  delay(1); 
+  #ifdef DEBUG_MOTORS
+  Serial.println(F("Motor speeds updated"));
+  // Print individual motor speeds
+  for (byte i = 0; i < MOTORS_COUNT; i++) {
+    Serial.print(F("Motor "));
+    Serial.print(i + 1);
+    Serial.print(F(": "));
+    Serial.print(getWheelSpeed(i));
+    Serial.print(F(" ratio, actual RPM: "));
+    Serial.println(getCurrentActualSpeed(i));
+  }
+  #endif
 } 

@@ -4,10 +4,11 @@
  * Implements serial communication for the Cycloid Machine
  */
 
+#include <Arduino.h>
 #include "SerialInterface.h"
 #include "MotorControl.h"
+#include "MenuSystem.h"
 #include "Config.h"
-#include "MenuSystem.h" // Include for setSystemPaused/getSystemPaused
 
 // Need access to wheel labels (still extern in Config.h)
 // REMOVE duplicate include
@@ -29,216 +30,279 @@ static const float ratioPresetsSerial[NUM_RATIO_PRESETS_SERIAL][MOTORS_COUNT] = 
 static void applyRatioPresetSerial(byte presetIndex);
 static void resetToDefaultsSerial();
 
+// Buffer for incoming serial commands
+char serialBuffer[MAX_BUFFER_SIZE];
+int bufferIndex = 0;
+
 // Initialize serial communication
-void setupSerial() {
-  Serial.begin(SERIAL_BAUD_RATE);
-  Serial.println(F("Cycloid Machine - Motor Control System"));
-  Serial.println(F("Type 'HELP' for available commands"));
+void setupSerialCommands() {
+  Serial.begin(SERIAL_BAUD);
+  Serial.println(F("Cycloid Machine Controller"));
+  Serial.println(F("Type 'help' for available commands"));
 }
 
-// Process commands received via serial
+// Process any available serial commands
 void processSerialCommands() {
   if (Serial.available() > 0) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
+    char incomingChar = Serial.read();
     
-    if (command.length() == 0) return;
+    // Handle backspace
+    if (incomingChar == '\b' || incomingChar == 127) {
+      if (bufferIndex > 0) {
+        bufferIndex--;
+        Serial.print(F("\b \b")); // Erase character on terminal
+      }
+      return;
+    }
     
-    command.toUpperCase();
+    // Echo character
+    Serial.print(incomingChar);
     
-    if (command == "HELP") {
-      printHelp();
-    } else if (command == "STATUS") {
-      printSystemStatus();
-    } else if (command == "PAUSE") {
-      // Call MenuSystem setter directly
-      setSystemPaused(true); 
-      // Serial.println(F("Pause requested")); // Feedback is now in setSystemPaused
-    } else if (command == "RESUME") {
-      // Call MenuSystem setter directly
-      setSystemPaused(false);
-      // Serial.println(F("Resume requested")); // Feedback is now in setSystemPaused
-    } else if (command == "RESET") {
-      // Call internal reset function
-      resetToDefaultsSerial(); 
-    } else if (command.startsWith("MICROSTEP ")) {
-      if (command.length() >= 11) {
-        int value = command.substring(10).toInt();
-        // Use MotorControl API
-        if (updateMicrostepMode(value)) { 
-          Serial.print(F("Set microstepping mode to "));
-          Serial.print(getCurrentMicrostepMode()); // Use getter
-          Serial.println(F("x"));
-        } else {
-          Serial.println(F("Invalid microstepping mode (use 1, 2, 4, 8, 16, 32, 64, or 128)"));
-        }
-      } else {
-        Serial.println(F("Invalid MICROSTEP command format"));
-      }
-    } else if (command.startsWith("SPEED ")) {
-      if (command.length() >= 8) {
-        char wheel = command.charAt(6);
-        int wheelIndex = -1;
-        for (byte i = 0; i < MOTORS_COUNT; i++) {
-          if (wheel == wheelLabels[i][0]) { wheelIndex = i; break; }
-        }
-        if (wheelIndex >= 0) {
-          float value = command.substring(8).toFloat();
-          // Use MotorControl API setter (handles constraints)
-          setWheelSpeed(wheelIndex, value); 
-          Serial.print(F("Set "));
-          Serial.print(wheelLabels[wheelIndex]);
-          Serial.print(F(" speed to "));
-          Serial.println(getWheelSpeed(wheelIndex)); // Use getter to confirm
-        } else {
-          Serial.println(F("Invalid wheel identifier"));
-        }
-      } else {
-        Serial.println(F("Invalid SPEED command format"));
-      }
-    } else if (command.startsWith("LFO ")) {
-      if (command.length() >= 10) {
-        char wheel = command.charAt(4);
-        int wheelIndex = -1;
-        for (byte i = 0; i < MOTORS_COUNT; i++) {
-          if (wheel == wheelLabels[i][0]) { wheelIndex = i; break; }
-        }
-        if (wheelIndex >= 0) {
-          int depthIdx = command.indexOf("DEPTH ");
-          int rateIdx = command.indexOf("RATE ");
-          int polIdx = command.indexOf("POL ");
-
-          if (depthIdx > 0) {
-            float value = command.substring(depthIdx + 6).toFloat();
-            // Use MotorControl API setter
-            setLfoDepth(wheelIndex, value); 
-            Serial.print(F("Set ")); Serial.print(wheelLabels[wheelIndex]);
-            Serial.print(F(" LFO depth to ")); Serial.println(getLfoDepth(wheelIndex)); // Use getter
-          } else if (rateIdx > 0) {
-            float value = command.substring(rateIdx + 5).toFloat();
-            // Use MotorControl API setter
-            setLfoRate(wheelIndex, value);
-            Serial.print(F("Set ")); Serial.print(wheelLabels[wheelIndex]);
-            Serial.print(F(" LFO rate to ")); Serial.println(getLfoRate(wheelIndex)); // Use getter
-          } else if (polIdx > 0) {
-            String polStr = command.substring(polIdx + 4);
-            polStr.trim(); // Trim whitespace
-            bool newPolarity = getLfoPolarity(wheelIndex); // Default to current
-            if (polStr == "UNI") {
-              newPolarity = false;
-            } else if (polStr == "BI") {
-              newPolarity = true;
-            } else {
-               Serial.println(F("Invalid polarity value (use UNI or BI)"));
-               continue; // Skip update if value is invalid
-            }
-            // Use MotorControl API setter
-            setLfoPolarity(wheelIndex, newPolarity);
-            Serial.print(F("Set ")); Serial.print(wheelLabels[wheelIndex]);
-            Serial.print(F(" LFO polarity to ")); Serial.println(getLfoPolarity(wheelIndex) ? "BI" : "UNI"); // Use getter
-          } else {
-            Serial.println(F("Invalid LFO parameter (DEPTH, RATE, or POL)"));
-          }
-        } else {
-          Serial.println(F("Invalid wheel identifier"));
-        }
-      } else {
-        Serial.println(F("Invalid LFO command format"));
-      }
-    } else if (command.startsWith("MASTER ")) {
-      if (command.length() >= 8) {
-        float value = command.substring(7).toFloat();
-        // Use MotorControl API setter
-        setMasterTime(value); 
-        Serial.print(F("Set master time to "));
-        Serial.println(getMasterTime()); // Use getter
-      } else {
-        Serial.println(F("Invalid MASTER command format"));
-      }
-    } else if (command.startsWith("RATIO ")) {
-      if (command.length() >= 7) {
-        int value = command.substring(6).toInt();
-        if (value >= 1 && value <= NUM_RATIO_PRESETS_SERIAL) {
-          // Call internal ratio function
-          applyRatioPresetSerial(value - 1); 
-        } else {
-          Serial.print(F("Invalid ratio preset (use 1-"));
-          Serial.print(NUM_RATIO_PRESETS_SERIAL);
-          Serial.println(")");
-        }
-      } else {
-        Serial.println(F("Invalid RATIO command format"));
+    // Add to buffer if not a line ending
+    if (incomingChar != '\n' && incomingChar != '\r') {
+      if (bufferIndex < MAX_BUFFER_SIZE - 1) {
+        serialBuffer[bufferIndex++] = incomingChar;
       }
     } else {
-      Serial.println(F("Unknown command. Type 'HELP' for available commands."));
+      // Process command when line ending is received
+      serialBuffer[bufferIndex] = '\0'; // Null-terminate
+      
+      Serial.println(); // New line after command
+      executeCommand(serialBuffer);
+      
+      // Reset buffer
+      bufferIndex = 0;
     }
-  } // end Serial.available()
+  }
 }
 
-// Print system status using MotorControl getters and MenuSystem pause getter
-void printSystemStatus() {
-  Serial.println(F("\nCycloid Machine Status:"));
-  // Use MenuSystem getter for pause state
-  Serial.print(F("System: ")); 
-  Serial.println(getSystemPaused() ? F("PAUSED") : F("RUNNING")); 
-  
-  Serial.print(F("Master Time: "));
-  Serial.println(getMasterTime());
-  
-  Serial.print(F("Microstepping: "));
-  Serial.print(getCurrentMicrostepMode());
-  Serial.println(F("x"));
-  
-  Serial.println(F("\nWheel Speeds (Base):"));
-  for (byte i = 0; i < MOTORS_COUNT; i++) {
-    Serial.print(wheelLabels[i]);
-    Serial.print(F(": "));
-    Serial.print(getWheelSpeed(i)); // Base speed setting
-    Serial.print(F(" (Actual: "));
-    Serial.print(getCurrentActualSpeed(i)); // Current calculated steps/sec
-    Serial.println(F(" steps/sec)"));
+// Execute serial command
+void executeCommand(char* command) {
+  // Convert to lowercase for case-insensitive comparison
+  for (int i = 0; command[i]; i++) {
+    command[i] = tolower(command[i]);
   }
   
-  Serial.println(F("\nLFO Settings:"));
-  for (byte i = 0; i < MOTORS_COUNT; i++) {
-    Serial.print(wheelLabels[i]);
-    Serial.print(F(": Depth="));
-    Serial.print(getLfoDepth(i));
-    Serial.print(F(", Rate="));
-    Serial.print(getLfoRate(i));
-    Serial.print(F(", Polarity="));
-    Serial.println(getLfoPolarity(i) ? F("BI") : F("UNI"));
+  // Help command
+  if (strcmp(command, "help") == 0) {
+    printHelp();
+    return;
   }
   
-  // Simplify active ratio display - just show current speeds
-  // Serial.println(F("\nActive Speeds (Current Base Settings): "));
-  // Serial.print(F("X:")); Serial.print(getWheelSpeed(0));
-  // Serial.print(F(", Y:")); Serial.print(getWheelSpeed(1));
-  // Serial.print(F(", Z:")); Serial.print(getWheelSpeed(2));
-  // Serial.print(F(", A:")); Serial.println(getWheelSpeed(3));
+  // Status command
+  if (strcmp(command, "status") == 0) {
+    printSystemStatus();
+    return;
+  }
+  
+  // Pause command
+  if (strcmp(command, "pause") == 0) {
+    setSystemPaused(true);
+    Serial.println(F("System paused"));
+    return;
+  }
+  
+  // Resume command
+  if (strcmp(command, "resume") == 0) {
+    setSystemPaused(false);
+    Serial.println(F("System resumed"));
+    return;
+  }
+  
+  // Reset command
+  if (strcmp(command, "reset") == 0) {
+    resetToDefaults();
+    Serial.println(F("All settings reset to defaults"));
+    return;
+  }
+  
+  // Enable motors command
+  if (strcmp(command, "enable") == 0) {
+    enableAllMotors();
+    Serial.println(F("Motors enabled"));
+    return;
+  }
+  
+  // Disable motors command
+  if (strcmp(command, "disable") == 0) {
+    disableAllMotors();
+    Serial.println(F("Motors disabled"));
+    return;
+  }
+  
+  // Master time command
+  if (strncmp(command, "master=", 7) == 0) {
+    float time = atof(command + 7);
+    if (time > 0) {
+      setMasterTime(time);
+      Serial.print(F("Master time set to: "));
+      Serial.println(time);
+    } else {
+      Serial.println(F("Error: Invalid master time value"));
+    }
+    return;
+  }
+  
+  // Wheel speed command format: "wheel1=value"
+  if (strncmp(command, "wheel", 5) == 0 && command[5] >= '1' && command[5] <= '4' && command[6] == '=') {
+    int motorIndex = command[5] - '1'; // Convert to 0-based index
+    float speed = atof(command + 7);
+    
+    if (speed != 0.0 || command[7] == '0') { // Valid numeric input
+      setWheelSpeed(motorIndex, speed);
+      Serial.print(F("Wheel "));
+      Serial.print(motorIndex + 1);
+      Serial.print(F(" speed set to: "));
+      Serial.println(speed);
+    } else {
+      Serial.println(F("Error: Invalid wheel speed value"));
+    }
+    return;
+  }
+  
+  // LFO depth command format: "depth1=value"
+  if (strncmp(command, "depth", 5) == 0 && command[5] >= '1' && command[5] <= '4' && command[6] == '=') {
+    int motorIndex = command[5] - '1'; // Convert to 0-based index
+    float depth = atof(command + 7);
+    
+    if (depth >= 0 && depth <= LFO_DEPTH_MAX) {
+      setLfoDepth(motorIndex, depth);
+      Serial.print(F("LFO depth for wheel "));
+      Serial.print(motorIndex + 1);
+      Serial.print(F(" set to: "));
+      Serial.println(depth);
+    } else {
+      Serial.println(F("Error: Invalid LFO depth value (0-100)"));
+    }
+    return;
+  }
+  
+  // LFO rate command format: "rate1=value"
+  if (strncmp(command, "rate", 4) == 0 && command[4] >= '1' && command[4] <= '4' && command[5] == '=') {
+    int motorIndex = command[4] - '1'; // Convert to 0-based index
+    float rate = atof(command + 6);
+    
+    if (rate >= 0 && rate <= LFO_RATE_MAX) {
+      setLfoRate(motorIndex, rate);
+      Serial.print(F("LFO rate for wheel "));
+      Serial.print(motorIndex + 1);
+      Serial.print(F(" set to: "));
+      Serial.println(rate);
+    } else {
+      Serial.println(F("Error: Invalid LFO rate value (0-10)"));
+    }
+    return;
+  }
+  
+  // LFO polarity command format: "polarity1=1" (1 for bipolar, 0 for unipolar)
+  if (strncmp(command, "polarity", 8) == 0 && command[8] >= '1' && command[8] <= '4' && command[9] == '=') {
+    int motorIndex = command[8] - '1'; // Convert to 0-based index
+    int polarity = atoi(command + 10);
+    
+    bool isBipolar = (polarity == 1);
+    setLfoPolarity(motorIndex, isBipolar);
+    Serial.print(F("LFO polarity for wheel "));
+    Serial.print(motorIndex + 1);
+    Serial.print(F(" set to: "));
+    Serial.println(isBipolar ? F("Bipolar") : F("Unipolar"));
+    return;
+  }
+  
+  // Microstep command format: "microstep=value"
+  if (strncmp(command, "microstep=", 10) == 0) {
+    int microstep = atoi(command + 10);
+    
+    if (updateMicrostepMode(microstep)) {
+      Serial.print(F("Microstep mode set to: "));
+      Serial.println(microstep);
+    } else {
+      Serial.println(F("Error: Invalid microstep value. Use 1, 2, 4, 8, 16, 32, 64, or 128"));
+    }
+    return;
+  }
+  
+  // Apply preset command format: "preset=value"
+  if (strncmp(command, "preset=", 7) == 0) {
+    int preset = atoi(command + 7);
+    
+    if (preset >= 1 && preset <= NUM_RATIO_PRESETS) {
+      applyRatioPreset(preset - 1); // Convert to 0-based index
+      Serial.print(F("Applied ratio preset: "));
+      Serial.println(preset);
+    } else {
+      Serial.println(F("Error: Invalid preset number"));
+    }
+    return;
+  }
+  
+  // If we get here, the command was not recognized
+  Serial.print(F("Unknown command: "));
+  Serial.println(command);
+  Serial.println(F("Type 'help' for available commands"));
 }
 
 // Print help information
 void printHelp() {
-  Serial.println(F("Available commands:"));
-  Serial.println(F("HELP          - Show this help"));
-  Serial.println(F("STATUS        - Show current system status"));
-  Serial.println(F("PAUSE         - Request system pause"));
-  Serial.println(F("RESUME        - Request system resume"));
-  Serial.println(F("RESET         - Reset all settings to default values"));
-  Serial.println(F("MICROSTEP val - Set microstepping (1, 2, 4, 8, 16, 32, 64, 128)"));
-  Serial.println(F("SPEED X val   - Set X wheel speed base (0.1-256.0)"));
-  Serial.println(F("SPEED Y val   - Set Y wheel speed base"));
-  Serial.println(F("SPEED Z val   - Set Z wheel speed base"));
-  Serial.println(F("SPEED A val   - Set A wheel speed base"));
-  Serial.println(F("LFO X D val   - Set X LFO depth % (0.0-100.0)"));
-  Serial.println(F("LFO X R val   - Set X LFO rate (0.0-256.0)"));
-  Serial.println(F("LFO X P U/B   - Set X LFO polarity (UNI or BI)"));
-  Serial.println(F("... (LFO Y/Z/A similar) ..."));
-  Serial.println(F("MASTER val    - Set master time (0.01-999.99)"));
-  Serial.print(F("RATIO n       - Apply ratio preset (1-"));
-  Serial.print(NUM_RATIO_PRESETS_SERIAL);
-  Serial.println(")");
+  Serial.println(F("\n--- Cycloid Machine Commands ---"));
+  Serial.println(F("status                   - Display system status"));
+  Serial.println(F("help                     - Show this help message"));
+  Serial.println(F("pause                    - Pause the system"));
+  Serial.println(F("resume                   - Resume the system"));
+  Serial.println(F("reset                    - Reset all settings to defaults"));
+  Serial.println(F("enable                   - Enable motor drivers"));
+  Serial.println(F("disable                  - Disable motor drivers"));
+  Serial.println(F("master=<value>           - Set master time in milliseconds"));
+  Serial.println(F("wheel<n>=<value>         - Set wheel speed ratio (n=1-4)"));
+  Serial.println(F("depth<n>=<value>         - Set LFO depth 0-100% (n=1-4)"));
+  Serial.println(F("rate<n>=<value>          - Set LFO rate 0-10Hz (n=1-4)"));
+  Serial.println(F("polarity<n>=<0/1>        - Set LFO polarity: 0=uni, 1=bi (n=1-4)"));
+  Serial.println(F("microstep=<value>        - Set microstepping (1,2,4,8,16,32,64,128)"));
+  Serial.println(F("preset=<value>           - Apply ratio preset (1-4)"));
+}
+
+// Print system status
+void printSystemStatus() {
+  Serial.println(F("\n--- System Status ---"));
+  
+  // System state
+  Serial.print(F("System state: "));
+  Serial.println(getSystemPaused() ? F("PAUSED") : F("RUNNING"));
+  
+  // Master time
+  Serial.print(F("Master time: "));
+  Serial.println(getMasterTime());
+  
+  // Microstepping mode
+  Serial.print(F("Microstepping: "));
+  Serial.println(getCurrentMicrostepMode());
+  
+  // Print wheel information
+  Serial.println(F("\n--- Wheel Settings ---"));
+  Serial.println(F("Wheel\tSpeed\tActual\tLFO Depth\tLFO Rate\tLFO Polarity"));
+  
+  for (byte i = 0; i < MOTORS_COUNT; i++) {
+    Serial.print(i + 1);
+    Serial.print(F("\t"));
+    
+    // Wheel speed ratio
+    Serial.print(getWheelSpeed(i));
+    Serial.print(F("\t"));
+    
+    // Actual speed in RPM
+    Serial.print(getCurrentActualSpeed(i));
+    Serial.print(F("\t"));
+    
+    // LFO depth
+    Serial.print(getLfoDepth(i));
+    Serial.print(F("%\t\t"));
+    
+    // LFO rate
+    Serial.print(getLfoRate(i));
+    Serial.print(F("Hz\t\t"));
+    
+    // LFO polarity
+    Serial.println(getLfoPolarity(i) ? F("Bipolar") : F("Unipolar"));
+  }
 }
 
 // --- Internal Helper Function Implementations ---

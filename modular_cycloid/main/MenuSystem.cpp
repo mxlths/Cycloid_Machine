@@ -4,8 +4,21 @@
  * Implements LCD display and menu navigation for the Cycloid Machine
  */
 
+#include <Arduino.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
 #include "MenuSystem.h"
 #include "MotorControl.h"
+#include "Config.h"
+
+// --- Constants ---
+// Add missing constants
+const byte NUM_MAIN_OPTIONS = 6; // SPEED, LFO, RATIO, MASTER, MICROSTEP, RESET
+const byte NUM_LFO_PARAMS_PER_WHEEL = 3; // Depth, Rate, Polarity
+const byte NUM_LFO_PARAMS_TOTAL = MOTORS_COUNT * NUM_LFO_PARAMS_PER_WHEEL;
+const byte NUM_RATIO_PRESETS = 4;
+const byte NUM_VALID_MICROSTEPS = 8;
 
 // Variables for microstepping menu
 bool editingMicrostep = false;
@@ -36,135 +49,39 @@ void updateDisplay() {
   char line2[LCD_COLS + 1];
   
   if (systemPaused) {
-    strcpy(line1, "** SYSTEM **");
-    strcpy(line2, "*** PAUSED ***");
+    // Call helper for paused state
+    displayPaused(line1, line2); 
   } else {
+    // MODIFY switch to call helper functions
     switch (currentMenu) {
       case MENU_MAIN:
-        // Show main menu with selected option
-        switch (selectedOption) {
-          case 0:
-            strcpy(line1, ">SPEED");
-            strcpy(line2, " LFO RATIO MSTR");
-            break;
-          case 1:
-            strcpy(line1, ">LFO");
-            strcpy(line2, " RATIO MSTR STEP");
-            break;
-          case 2:
-            strcpy(line1, ">RATIO");
-            strcpy(line2, " MSTR STEP RST");
-            break;
-          case 3:
-            strcpy(line1, ">MASTER");
-            strcpy(line2, " STEP RST SPEED");
-            break;
-          case 4:
-            strcpy(line1, ">MICROSTEP");
-            strcpy(line2, " RST SPEED LFO");
-            break;
-          case 5:
-            strcpy(line1, ">RESET");
-            strcpy(line2, " SPEED LFO RATIO");
-            break;
-        }
+        displayMainMenu(line1, line2);
         break;
         
       case MENU_SPEED:
-        // Show wheel selection and speed
-        if (editingSpeed) {
-          sprintf(line1, "SPEED: %s#", wheelLabels[selectedSpeedWheel]);
-        } else {
-          sprintf(line1, "SPEED: %s", wheelLabels[selectedSpeedWheel]);
-        }
-        sprintf(line2, "Value: %05.1f", wheelSpeeds[selectedSpeedWheel]);
+        displaySpeedMenu(line1, line2);
         break;
         
       case MENU_LFO:
-        // Show LFO parameter selection and value
-        byte wheelIndex = selectedLfoParam / 3;
-        byte paramType = selectedLfoParam % 3;
-        
-        if (paramType == 0) {  // Depth
-          if (editingLfo) {
-            sprintf(line1, "LFO: %s DPT#", wheelLabels[wheelIndex]);
-          } else {
-            sprintf(line1, "LFO: %s DPT", wheelLabels[wheelIndex]);
-          }
-          sprintf(line2, "Value: %05.1f%%", lfoDepths[wheelIndex]);
-        }
-        else if (paramType == 1) {  // Rate
-          if (editingLfo) {
-            sprintf(line1, "LFO: %s RTE#", wheelLabels[wheelIndex]);
-          } else {
-            sprintf(line1, "LFO: %s RTE", wheelLabels[wheelIndex]);
-          }
-          sprintf(line2, "Value: %05.1f", lfoRates[wheelIndex]);
-        }
-        else {  // Polarity
-          if (editingLfo) {
-            sprintf(line1, "LFO: %s POL#", wheelLabels[wheelIndex]);
-          } else {
-            sprintf(line1, "LFO: %s POL", wheelLabels[wheelIndex]);
-          }
-          sprintf(line2, "Value: %s", lfoPolarities[wheelIndex] ? "BI" : "UNI");
-        }
+        displayLfoMenu(line1, line2);
         break;
         
       case MENU_RATIO:
-        if (confirmingRatio) {
-          strcpy(line1, "APPLY RATIO?");
-          if (ratioChoice) {
-            strcpy(line2, " NO   >YES");
-          } else {
-            strcpy(line2, ">NO    YES");
-          }
-        } else {
-          sprintf(line1, "RATIO PRESET: %d", selectedRatioPreset + 1);
-          
-          // Format the ratio values in a compact way
-          char ratio[17];
-          sprintf(ratio, "%g:%g:%g:%g", 
-                  ratioPresets[selectedRatioPreset][0],
-                  ratioPresets[selectedRatioPreset][1],
-                  ratioPresets[selectedRatioPreset][2],
-                  ratioPresets[selectedRatioPreset][3]);
-          strcpy(line2, ratio);
-        }
+        displayRatioMenu(line1, line2);
         break;
         
       case MENU_MASTER:
-        if (editingMaster) {
-          strcpy(line1, "MASTER TIME:#");
-        } else {
-          strcpy(line1, "MASTER TIME:");
-        }
-        sprintf(line2, "Value: %06.2f S", masterTime);
+        displayMasterMenu(line1, line2);
         break;
         
       case MENU_MICROSTEP:
-        // Show microstepping configuration
-        if (editingMicrostep) {
-          strcpy(line1, "MICROSTEP:#");
-        } else {
-          strcpy(line1, "MICROSTEP:");
-        }
-        sprintf(line2, "Value: %dx", currentMicrostepMode);
+        displayMicrostepMenu(line1, line2);
         break;
         
       case MENU_RESET:
-        if (confirmingReset) {
-          strcpy(line1, "RESET TO DEFLT?");
-          if (resetChoice) {
-            strcpy(line2, " NO   >YES");
-          } else {
-            strcpy(line2, ">NO    YES");
-          }
-        } else {
-          strcpy(line1, "RESET");
-          strcpy(line2, "Press to confirm");
-        }
+        displayResetMenu(line1, line2);
         break;
+        // Default case not strictly needed if MenuState enum is used correctly
     }
   }
   
@@ -179,8 +96,25 @@ void updateDisplay() {
   lcd.print(line2);
 }
 
-// Enter a submenu and initialize its state
-void enterSubmenu(byte menu) {
+// --- Forward Declarations for Static Functions ---
+static void enterSubmenu(MenuState menu);
+static void returnToMainMenu();
+static void displayPaused(char* line1, char* line2);
+static void displayMainMenu(char* line1, char* line2);
+static void displaySpeedMenu(char* line1, char* line2);
+static void displayLfoMenu(char* line1, char* line2);
+static void displayRatioMenu(char* line1, char* line2);
+static void displayMasterMenu(char* line1, char* line2);
+static void displayMicrostepMenu(char* line1, char* line2);
+static void displayResetMenu(char* line1, char* line2);
+static void applyRatioPresetInternal(byte presetIndex);
+static void resetToDefaultsInternal();
+
+/**
+ * Enter a submenu and initialize its state
+ * @param menu The menu to enter
+ */
+static void enterSubmenu(MenuState menu) {
   currentMenu = menu;
   
   // Initialize submenu state
@@ -217,8 +151,10 @@ void enterSubmenu(byte menu) {
   updateDisplay();
 }
 
-// Return to the main menu, resetting submenu states
-void returnToMainMenu() {
+/**
+ * Return to the main menu, resetting all submenu states
+ */
+static void returnToMainMenu() {
   currentMenu = MENU_MAIN;
   editingSpeed = false;
   editingLfo = false;
@@ -391,13 +327,12 @@ void handleMenuReturn() {
 }
 
 // Handle SPEED menu navigation
-void handleSpeedMenu(int change) {
+static void handleSpeedMenu(int change) {
   if (editingSpeed) {
-    // Adjust selected wheel speed (0.1 increments)
-    wheelSpeeds[selectedSpeedWheel] += change * 0.1;
-    // Constrain to valid range
-    if (wheelSpeeds[selectedSpeedWheel] < 0.1) wheelSpeeds[selectedSpeedWheel] = 0.1;
-    if (wheelSpeeds[selectedSpeedWheel] > 256.0) wheelSpeeds[selectedSpeedWheel] = 256.0;
+    // REPLACE direct access with getter/setter
+    float currentSpeed = getWheelSpeed(selectedSpeedWheel);
+    setWheelSpeed(selectedSpeedWheel, currentSpeed + change * 0.1); 
+    // Constraints are handled by the setter
   } else {
     // Cycle through wheels
     selectedSpeedWheel = (selectedSpeedWheel + MOTORS_COUNT + change) % MOTORS_COUNT;
@@ -405,77 +340,79 @@ void handleSpeedMenu(int change) {
 }
 
 // Handle LFO menu navigation
-void handleLfoMenu(int change) {
+static void handleLfoMenu(int change) {
   if (editingLfo) {
-    byte wheelIndex = selectedLfoParam / 3;
-    byte paramType = selectedLfoParam % 3;
+    byte wheelIndex = selectedLfoParam / NUM_LFO_PARAMS_PER_WHEEL;
+    byte paramType = selectedLfoParam % NUM_LFO_PARAMS_PER_WHEEL;
     
     if (paramType == 0) {  // Depth (0-100%)
-      lfoDepths[wheelIndex] += change * 0.1;
-      if (lfoDepths[wheelIndex] < 0.0) lfoDepths[wheelIndex] = 0.0;
-      if (lfoDepths[wheelIndex] > 100.0) lfoDepths[wheelIndex] = 100.0;
+      // REPLACE direct access with getter/setter
+      float currentDepth = getLfoDepth(wheelIndex);
+      setLfoDepth(wheelIndex, currentDepth + change * 0.1);
+      // Constraints are handled by the setter
     }
     else if (paramType == 1) {  // Rate (0-256.0)
-      lfoRates[wheelIndex] += change * 0.1;
-      if (lfoRates[wheelIndex] < 0.0) lfoRates[wheelIndex] = 0.0;
-      if (lfoRates[wheelIndex] > 256.0) lfoRates[wheelIndex] = 256.0;
+      // REPLACE direct access with getter/setter
+      float currentRate = getLfoRate(wheelIndex);
+      setLfoRate(wheelIndex, currentRate + change * 0.1);
+      // Constraints are handled by the setter
     }
     else {  // Polarity (toggle UNI/BI)
-      if (change != 0) lfoPolarities[wheelIndex] = !lfoPolarities[wheelIndex];
+      // REPLACE direct access with getter/setter
+      if (change != 0) { 
+          bool currentPolarity = getLfoPolarity(wheelIndex);
+          setLfoPolarity(wheelIndex, !currentPolarity);
+      }
     }
   } else {
-    // Cycle through LFO parameters (12 total: 4 wheels x 3 params)
-    selectedLfoParam = (selectedLfoParam + 12 + change) % 12;
+    // Cycle through LFO parameters 
+    selectedLfoParam = (selectedLfoParam + NUM_LFO_PARAMS_TOTAL + change) % NUM_LFO_PARAMS_TOTAL;
   }
 }
 
 // Handle RATIO menu navigation
-void handleRatioMenu(int change) {
+static void handleRatioMenu(int change) {
   if (confirmingRatio) {
     // Toggle YES/NO choice
     if (change != 0) ratioChoice = !ratioChoice;
   } else {
     // Cycle through ratio presets
-    selectedRatioPreset = (selectedRatioPreset + 4 + change) % 4;
+    selectedRatioPreset = (selectedRatioPreset + NUM_RATIO_PRESETS + change) % NUM_RATIO_PRESETS;
   }
 }
 
 // Handle MASTER menu navigation
-void handleMasterMenu(int change) {
+static void handleMasterMenu(int change) {
   if (editingMaster) {
-    // Adjust master time (0.01 increments)
-    masterTime += change * 0.01;
-    // Constrain to valid range
-    if (masterTime < 0.01) masterTime = 0.01;
-    if (masterTime > 999.99) masterTime = 999.99;
+    // REPLACE direct access with getter/setter
+    float currentTime = getMasterTime();
+    setMasterTime(currentTime + change * 0.01);
+    // Constraints are handled by the setter
   }
+  // No cycling needed if not editing
 }
 
 // Handle MICROSTEP menu navigation
-void handleMicrostepMenu(int change) {
+static void handleMicrostepMenu(int change) {
   if (editingMicrostep) {
-    // Find current index in the validMicrosteps array
-    for (byte i = 0; i < microstepCount; i++) {
-      if (validMicrosteps[i] == currentMicrostepMode) {
-        currentMicrostepIndex = i;
-        break;
-      }
-    }
-    
-    // Adjust the index based on encoder change
+    // Adjust the index based on encoder change (this part is fine)
     if (change > 0) {
-      currentMicrostepIndex = (currentMicrostepIndex + 1) % microstepCount;
+      currentMicrostepIndex = (currentMicrostepIndex + 1) % NUM_VALID_MICROSTEPS;
     } else if (change < 0) {
-      currentMicrostepIndex = (currentMicrostepIndex + microstepCount - 1) % microstepCount;
+      currentMicrostepIndex = (currentMicrostepIndex + NUM_VALID_MICROSTEPS - 1) % NUM_VALID_MICROSTEPS;
     }
     
-    // Update the microstepping mode from the index
-    currentMicrostepMode = validMicrosteps[currentMicrostepIndex];
+    // Update the PENDING microstepping mode from the index
+    // REMOVE direct write to currentMicrostepMode
+    if (change != 0) { // Only update pending mode if index actually changed
+       pendingMicrostepMode = validMicrosteps[currentMicrostepIndex];
+    }
   }
+   // No cycling needed if not editing
 }
 
 // Handle RESET menu navigation
-void handleResetMenu(int change) {
+static void handleResetMenu(int change) {
   if (confirmingReset) {
     // Toggle YES/NO choice
     if (change != 0) resetChoice = !resetChoice;
@@ -501,5 +438,191 @@ void setSystemPaused(bool pause) {
     }
 }
 
-// --- Internal Static Functions ---
-static void displayPaused(char* line1, char* line2); 
+// --- Display Helper Functions ---
+
+/**
+ * Display the system paused screen
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displayPaused(char* line1, char* line2) {
+  strcpy(line1, "** SYSTEM **");
+  strcpy(line2, "*** PAUSED ***");
+}
+
+/**
+ * Display the main menu screen with a sliding window of options
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displayMainMenu(char* line1, char* line2) {
+  // Simple sliding window display for main menu
+  const char* options[] = {"SPEED", "LFO", "RATIO", "MASTER", "STEP", "RESET"};
+  byte prev = (selectedOption + NUM_MAIN_OPTIONS - 1) % NUM_MAIN_OPTIONS;
+  byte next = (selectedOption + 1) % NUM_MAIN_OPTIONS;
+  sprintf(line1, ">%s", options[selectedOption]);
+  sprintf(line2, " %s %s %s", options[prev], options[next], options[(next+1)%NUM_MAIN_OPTIONS]); // Show more context
+}
+
+/**
+ * Display the speed menu screen for the selected wheel
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displaySpeedMenu(char* line1, char* line2) {
+  if (editingSpeed) {
+    sprintf(line1, "SPEED: %s#", wheelLabels[selectedSpeedWheel]);
+  } else {
+    sprintf(line1, "SPEED: %s", wheelLabels[selectedSpeedWheel]);
+  }
+  // Use getter instead of direct access
+  sprintf(line2, "Value: %05.1f", getWheelSpeed(selectedSpeedWheel));
+}
+
+/**
+ * Display the LFO menu screen for the selected parameter
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displayLfoMenu(char* line1, char* line2) {
+  byte wheelIndex = selectedLfoParam / NUM_LFO_PARAMS_PER_WHEEL;
+  byte paramType = selectedLfoParam % NUM_LFO_PARAMS_PER_WHEEL;
+  const char* paramName = "";
+  
+  switch(paramType) {
+    case 0: // Depth
+      paramName = "DPT";
+      if (editingLfo) {
+        sprintf(line1, "LFO: %s %s#", wheelLabels[wheelIndex], paramName);
+      } else {
+        sprintf(line1, "LFO: %s %s", wheelLabels[wheelIndex], paramName);
+      }
+      // Use getter instead of direct access
+      sprintf(line2, "Value: %05.1f%%", getLfoDepth(wheelIndex));
+      break;
+      
+    case 1: // Rate
+      paramName = "RTE";
+      if (editingLfo) {
+        sprintf(line1, "LFO: %s %s#", wheelLabels[wheelIndex], paramName);
+      } else {
+        sprintf(line1, "LFO: %s %s", wheelLabels[wheelIndex], paramName);
+      }
+      // Use getter instead of direct access
+      sprintf(line2, "Value: %05.1f", getLfoRate(wheelIndex));
+      break;
+      
+    case 2: // Polarity
+      paramName = "POL";
+      if (editingLfo) {
+        sprintf(line1, "LFO: %s %s#", wheelLabels[wheelIndex], paramName);
+      } else {
+        sprintf(line1, "LFO: %s %s", wheelLabels[wheelIndex], paramName);
+      }
+      // Use getter instead of direct access
+      sprintf(line2, "Value: %s", getLfoPolarity(wheelIndex) ? "BI" : "UNI");
+      break;
+  }
+}
+
+/**
+ * Display the ratio preset selection screen
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displayRatioMenu(char* line1, char* line2) {
+  if (confirmingRatio) {
+    strcpy(line1, "Apply Preset?");
+    
+    char buffer[LCD_COLS + 1];
+    // Show the ratios from the preset using Config.h
+    // Format for display: "P1: 1.0:1.0:1.0:1.0"
+    sprintf(buffer, "P%d:", selectedRatioPreset + 1);
+    
+    for (byte i = 0; i < MOTORS_COUNT; i++) {
+      char ratioStr[6]; // Buffer for ratio display
+      dtostrf(RATIO_PRESETS[selectedRatioPreset][i], 3, 1, ratioStr);
+      
+      if (i < MOTORS_COUNT - 1) {
+        strcat(buffer, ratioStr);
+        strcat(buffer, ":");
+      } else {
+        strcat(buffer, ratioStr);
+      }
+    }
+    
+    strcpy(line2, buffer);
+  } else {
+    strcpy(line1, "Select Ratio");
+    
+    char buffer[LCD_COLS + 1];
+    sprintf(buffer, "Preset %d", selectedRatioPreset + 1);
+    strcpy(line2, buffer);
+  }
+}
+
+/**
+ * Display the master time adjustment screen
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displayMasterMenu(char* line1, char* line2) {
+  if (editingMaster) {
+    strcpy(line1, "MASTER TIME:#");
+  } else {
+    strcpy(line1, "MASTER TIME:");
+  }
+  // Use getter instead of direct access
+  sprintf(line2, "Value: %06.2f S", getMasterTime());
+}
+
+/**
+ * Display the microstepping mode selection screen
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displayMicrostepMenu(char* line1, char* line2) {
+  if (editingMicrostep) {
+    strcpy(line1, "MICROSTEP:#");
+    // When editing, show the pending value that hasn't been applied yet
+    sprintf(line2, "Value: %dx", pendingMicrostepMode);
+  } else {
+    strcpy(line1, "MICROSTEP:");
+    // When not editing, show the current actual value using the getter
+    sprintf(line2, "Value: %dx", getCurrentMicrostepMode());
+  }
+}
+
+/**
+ * Display the reset confirmation screen
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displayResetMenu(char* line1, char* line2) {
+  if (confirmingReset) {
+    strcpy(line1, "RESET TO DEFLT?");
+    if (resetChoice) {
+      strcpy(line2, " NO   >YES");
+    } else {
+      strcpy(line2, ">NO    YES");
+    }
+  } else {
+    strcpy(line1, "RESET");
+    strcpy(line2, "Press to confirm");
+  }
+}
+
+/**
+ * Apply a ratio preset to all motors
+ * @param presetIndex The index of the preset to apply (0-based)
+ */
+static void applyRatioPresetInternal(byte presetIndex) {
+  if (presetIndex < NUM_RATIO_PRESETS) {
+    for (byte i = 0; i < MOTORS_COUNT; i++) {
+      // Use the centralized ratio presets from Config.h
+      setMotorRatio(i, RATIO_PRESETS[presetIndex][i]);
+    }
+    Serial.print(F("Applied ratio preset "));
+    Serial.println(presetIndex + 1);
+  }
+} 
