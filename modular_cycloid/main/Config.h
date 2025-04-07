@@ -13,22 +13,28 @@
 #include <LiquidCrystal_I2C.h>
 #include <AccelStepper.h>
 
-// ---- PIN DEFINITIONS ----
-// CNC Shield connections (standard)
+// --- Pin Definitions ---
+// Common enable pin for all drivers
+#define ENABLE_PIN 8
+
+// Stepper Motor Pins (Using CNC Shield v3 defaults)
 #define X_STEP_PIN 2
 #define X_DIR_PIN 5
 #define Y_STEP_PIN 3
 #define Y_DIR_PIN 6
 #define Z_STEP_PIN 4
 #define Z_DIR_PIN 7
-#define A_STEP_PIN 12
-#define A_DIR_PIN 13
-#define ENABLE_PIN 8
+#define A_STEP_PIN 12 // Using D12 as Step pin for A axis
+#define A_DIR_PIN 13  // Using D13 as Dir pin for A axis
 
-// Rotary Encoder (connected to limit switch pins on CNC Shield)
-#define ENC_A_PIN 9    // CLK
-#define ENC_B_PIN 10   // DT
-#define ENC_BTN_PIN 11 // SW
+// Rotary Encoder Pins
+#define ENCODER_PIN_A A0
+#define ENCODER_PIN_B A1
+#define ENCODER_BTN_PIN A2
+
+// LCD I2C Address
+#define LCD_SDA A4
+#define LCD_SCL A5
 
 // ---- CONSTANTS ----
 #define MOTORS_COUNT 4
@@ -51,27 +57,6 @@
 #define STEPS_PER_WHEEL_REV (STEPS_PER_MOTOR_REV * GEAR_RATIO) // 600 steps
 
 #define SERIAL_BAUD_RATE 9600
-
-// Add MenuState enum
-enum MenuState {
-  MENU_MAIN = 0, // Keep explicit values for compatibility if needed, though not strictly necessary
-  MENU_SPEED,
-  MENU_LFO,
-  MENU_RATIO,
-  MENU_MASTER,
-  MENU_MICROSTEP,
-  MENU_RESET
-};
-
-// Button timing
-#define DEBOUNCE_TIME 50        // ms
-#define LONG_PRESS_TIME 1000    // ms
-
-// Motor update interval
-#define MOTOR_UPDATE_INTERVAL 5 // ms
-
-// LFO resolution
-#define LFO_RESOLUTION 1000     // Phase resolution for smoother LFO
 
 // --- SYSTEM CONFIGURATION ---
 #define SERIAL_BAUD 115200
@@ -114,26 +99,21 @@ const float RATIO_PRESETS[NUM_RATIO_PRESETS][MOTORS_COUNT] = {
 const int VALID_MICROSTEPS[NUM_VALID_MICROSTEPS] = {1, 2, 4, 8, 16, 32, 64, 128};
 
 // --- DEFAULT VALUES ---
-#define DEFAULT_MASTER_SPEED 60 // Default master speed in RPM
+#define DEFAULT_MASTER_TIME 1000 // Default master time (period) in milliseconds (e.g., 1000ms for 60RPM at speed 1.0)
 #define DEFAULT_SPEED_RATIO 1.0 // Default ratio for all motors
 #define DEFAULT_LFO_DEPTH 0     // Default LFO depth (0 = off)
 #define DEFAULT_LFO_RATE 1      // Default LFO rate in Hz
-#define DEFAULT_LFO_POLARITY 1  // Default LFO polarity (1 = positive)
-#define DEFAULT_MICROSTEP 16    // Default microstepping mode
+#define DEFAULT_LFO_POLARITY false // Default LFO polarity (false = unipolar)
+#define DEFAULT_MICROSTEP 16    // Default microstepping mode (MATCH YOUR JUMPERS)
 
-// ---- EXTERNAL DECLARATIONS ----
-
-// LCD display
+// --- GLOBAL HARDWARE OBJECTS ---
+// Declare global hardware objects defined in main.ino
 extern LiquidCrystal_I2C lcd;
-
-// Stepper motors
 extern AccelStepper stepperX;
 extern AccelStepper stepperY;
 extern AccelStepper stepperZ;
 extern AccelStepper stepperA;
 extern AccelStepper* steppers[MOTORS_COUNT];
-
-// Wheel labels
 extern const char* wheelLabels[MOTORS_COUNT];
 
 #endif // CONFIG_H 

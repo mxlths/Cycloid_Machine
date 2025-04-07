@@ -12,16 +12,38 @@
 #include "MotorControl.h"
 #include "Config.h"
 
+// --- LCD Instance ---
+// Defined globally in main.ino, declared extern in Config.h
+// extern LiquidCrystal_I2C lcd;
+
 // --- Constants ---
-// Add missing constants
 const byte NUM_MAIN_OPTIONS = 6; // SPEED, LFO, RATIO, MASTER, MICROSTEP, RESET
 const byte NUM_LFO_PARAMS_PER_WHEEL = 3; // Depth, Rate, Polarity
 const byte NUM_LFO_PARAMS_TOTAL = MOTORS_COUNT * NUM_LFO_PARAMS_PER_WHEEL;
 const byte NUM_RATIO_PRESETS = 4;
 const byte NUM_VALID_MICROSTEPS = 8;
 
+// --- Menu State Variables ---
+static MenuState currentMenu = MENU_MAIN;
+static byte selectedMainMenuOption = 0;
+static byte selectedSpeedWheel = 0;
+static byte selectedLfoParam = 0;
+static byte selectedRatioPreset = 0;
+static byte selectedMicrostepIndex = 4; // Default to 16x microstepping index
+static byte pendingMicrostepMode = DEFAULT_MICROSTEP; // Variable to hold pending selection
+
+// State flags for editing modes
+static bool editingSpeed = false;
+static bool editingLfo = false;
+static bool editingMaster = false;
+static bool editingMicrostep = false;
+static bool confirmingRatio = false;
+static bool confirmingReset = false;
+
+// Pause state
+static bool systemPaused = false;
+
 // Variables for microstepping menu
-bool editingMicrostep = false;
 const byte validMicrosteps[] = {1, 2, 4, 8, 16, 32, 64, 128};
 const byte microstepCount = 8;
 byte currentMicrostepIndex = 0; // Index in validMicrosteps array
@@ -620,9 +642,34 @@ static void applyRatioPresetInternal(byte presetIndex) {
   if (presetIndex < NUM_RATIO_PRESETS) {
     for (byte i = 0; i < MOTORS_COUNT; i++) {
       // Use the centralized ratio presets from Config.h
-      setMotorRatio(i, RATIO_PRESETS[presetIndex][i]);
+      setWheelSpeed(i, RATIO_PRESETS[presetIndex][i]);
     }
     Serial.print(F("Applied ratio preset "));
     Serial.println(presetIndex + 1);
   }
+}
+
+/**
+ * Reset all settings to their default values
+ */
+static void resetToDefaultsInternal() {
+    Serial.println(F("Menu: Resetting to defaults..."));
+    // Reset motor control settings first
+    resetToDefaults(); // Call the public MotorControl reset function
+    
+    // Reset menu state variables
+    currentMenu = MENU_MAIN;
+    selectedMainMenuOption = 0;
+    selectedSpeedWheel = 0;
+    selectedLfoParam = 0;
+    selectedRatioPreset = 0;
+    selectedMicrostepIndex = 4; // Default index for 16x
+    pendingMicrostepMode = DEFAULT_MICROSTEP;
+    editingSpeed = false;
+    editingLfo = false;
+    editingMaster = false;
+    editingMicrostep = false;
+    confirmingRatio = false;
+    confirmingReset = false;
+    systemPaused = false; // Ensure system is not paused after reset
 } 

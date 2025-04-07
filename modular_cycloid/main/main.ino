@@ -16,39 +16,46 @@
 #include "InputHandling.h"
 #include "SerialInterface.h"
 
-// Debug flags - uncomment to enable debug output
+// Debug flags - uncomment to enable specific debug output
 // #define DEBUG_TIMING
 // #define DEBUG_INPUT
 // #define DEBUG_MOTORS
 
-// Global Definitions (Hardware Objects)
-// These were previously extern in Config.h, need definition here or in a dedicated globals.cpp
-LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLS, LCD_ROWS); 
+// --- Global Hardware Objects ---
+// LCD Display
+LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLS, LCD_ROWS);
+
+// Stepper Motors (using definitions from Config.h)
 AccelStepper stepperX(AccelStepper::DRIVER, X_STEP_PIN, X_DIR_PIN);
 AccelStepper stepperY(AccelStepper::DRIVER, Y_STEP_PIN, Y_DIR_PIN);
 AccelStepper stepperZ(AccelStepper::DRIVER, Z_STEP_PIN, Z_DIR_PIN);
 AccelStepper stepperA(AccelStepper::DRIVER, A_STEP_PIN, A_DIR_PIN);
+
+// Array of stepper pointers (used by MotorControl)
 AccelStepper* steppers[MOTORS_COUNT] = {&stepperX, &stepperY, &stepperZ, &stepperA};
+
+// Wheel Labels (used by MenuSystem)
 const char* wheelLabels[MOTORS_COUNT] = {"X", "Y", "Z", "A"};
 
 // Timing variables
 unsigned long currentMillis = 0;
 unsigned long lastSerialStatusTime = 0;
+const unsigned long SERIAL_STATUS_INTERVAL = 2000; // ms
 
 // Setup function - called once at startup
 void setup() {
-  // Initialize serial communication
+  // Initialize serial communication FIRST for debugging output
   Serial.begin(SERIAL_BAUD);
-  Serial.println(F("\nCycloid Machine Controller v1.1"));
+  Serial.println(F("\nCycloid Machine Controller v1.2")); // Updated version
   Serial.println(F("Initializing..."));
   
   // Initialize systems in order
-  setupMotors();
-  setupLCD();
-  setupEncoders();
-  setupSerialCommands();
+  setupMotors();        // Initialize motor parameters and enable pin
+  setupLCD();           // Initialize LCD display
+  setupEncoders();      // Initialize rotary encoder pins and state
+  setupSerialCommands();// Initialize serial command buffer
   
-  // Show initial display
+  // Show initial display after all setup
   updateDisplay();
   
   Serial.println(F("Initialization complete"));
@@ -60,48 +67,40 @@ void loop() {
   // Get current time
   currentMillis = millis();
   
-  // Process serial commands
+  // Process any incoming serial commands
   processSerialCommands();
   
-  // Get system paused state from MenuSystem
-  bool paused = getSystemPaused();
-  
-  // Update motor speeds if not paused
-  updateMotors(currentMillis, paused);
-  
-  // Check and handle encoder/button inputs
+  // Check and handle encoder/button inputs (updates menu state)
   checkEncoders();
   
-  // Print status at regular intervals
-  if (currentMillis - lastSerialStatusTime >= 2000) {
-    #ifdef DEBUG_TIMING
-    Serial.print(F("Loop time (ms): "));
-    Serial.println(millis() - currentMillis);
-    #endif
-    
-    #ifdef DEBUG_MOTORS
+  // Get current system paused state from MenuSystem
+  bool paused = getSystemPaused();
+  
+  // Update motor positions/speeds based on current settings and pause state
+  updateMotors(currentMillis, paused);
+  
+  // Update the LCD display (reflects changes from input/motors)
+  // updateDisplay(); // Called within handleMenuNavigation/Selection/Return now
+
+  // Print status periodically if DEBUG_MOTORS is enabled
+  #ifdef DEBUG_MOTORS
+  if (currentMillis - lastSerialStatusTime >= SERIAL_STATUS_INTERVAL) {
     printSystemStatus();
-    #endif
-    
     lastSerialStatusTime = currentMillis;
   }
+  #endif
+
+  // Optional: Small delay to prevent overwhelming the processor, 
+  // but AccelStepper generally benefits from frequent .runSpeed() calls in updateMotors
+  // delay(1);
 }
 
-// Function to update motor speed display and actual motor speeds
-void updateMotorSpeeds() {
-  // Update LCD with current speeds
-  updateDisplay();
-  
-  #ifdef DEBUG_MOTORS
-  Serial.println(F("Motor speeds updated"));
-  // Print individual motor speeds
-  for (byte i = 0; i < MOTORS_COUNT; i++) {
-    Serial.print(F("Motor "));
-    Serial.print(i + 1);
-    Serial.print(F(": "));
-    Serial.print(getWheelSpeed(i));
-    Serial.print(F(" ratio, actual RPM: "));
-    Serial.println(getCurrentActualSpeed(i));
-  }
-  #endif
-} 
+// REMOVE unused function
+// void updateMotorSpeeds() {
+//   // Update LCD with current speeds
+//   updateDisplay();
+//   
+//   #ifdef DEBUG_MOTORS
+//   // ... (debug printing removed)
+//   #endif
+// } 

@@ -14,6 +14,9 @@ void setupMotors();
 void stopAllMotors();
 bool updateMicrostepMode(byte newMode);
 unsigned long getStepsPerWheelRev();
+void enableAllMotors();
+void disableAllMotors();
+void resetToDefaults();
 
 // Motor control functions
 void updateMotors(unsigned long currentMillis, bool paused);
