@@ -15,24 +15,22 @@ void updateDisplay();
 
 // Menu navigation functions
 void initializeMenu();
-void enterSubmenu(byte menu);
-void returnToMainMenu();
 void handleMenuNavigation(int change);
 void handleMenuSelection();
 void handleMenuReturn();
 
-// Submenu handler functions
-void handleSpeedMenu(int change);
-void handleLfoMenu(int change);
-void handleRatioMenu(int change);
-void handleMasterMenu(int change);
-void handleMicrostepMenu(int change);
-void handleResetMenu(int change);
+// Function to get the current pause state
+bool getSystemPaused();
 
-// External variable declarations
-extern bool editingMicrostep;
-extern const byte validMicrosteps[];
-extern const byte microstepCount;
-extern byte currentMicrostepIndex;
+// Function to set the pause state externally (e.g., from Serial)
+void setSystemPaused(bool pause);
+
+// Submenu handler functions
+// void handleSpeedMenu(int change);
+// void handleLfoMenu(int change);
+// void handleRatioMenu(int change);
+// void handleMasterMenu(int change);
+// void handleMicrostepMenu(int change);
+// void handleResetMenu(int change);
 
 #endif // MENU_SYSTEM_H 

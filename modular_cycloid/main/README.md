@@ -78,4 +78,33 @@ Available commands via Serial (9600 baud):
 - `MASTER value` - Set master time (0.01-999.99)
 - `RATIO n` - Apply ratio preset (1-4)
 
-Replace X with Y, Z, or A for other wheels. 
+Replace X with Y, Z, or A for other wheels.
+
+## Version History
+
+### v1.1 (Refactored - 2024-04-07)
+
+*   **Major Refactoring for Modularity and State Management:**
+    *   Removed extensive use of global variables (`extern`) for application state.
+    *   Encapsulated state within respective modules (`MotorControl`, `MenuSystem`, `InputHandling`) using `static` variables.
+    *   Introduced a clean getter/setter API in `MotorControl.h` for interacting with motor parameters (speed, LFO, master time, microstep).
+    *   Refactored `MenuSystem` and `SerialInterface` to use the new `MotorControl` API instead of direct global access.
+    *   Moved application logic (applying ratio presets, resetting defaults) from `MotorControl` into `MenuSystem` and `SerialInterface` where the actions are triggered.
+    *   Centralized pause state (`systemPaused`) management within `MenuSystem`, allowing control via both the menu (long press) and serial commands (`PAUSE`/`RESUME`).
+    *   Defined hardware object instances (`lcd`, `steppers`) in `main.ino` instead of using `extern` declarations.
+    *   Improved code readability by using `enum` for menu states, adding constants, and breaking down large functions (e.g., `updateDisplay`).
+*   **Corrections (Post-Refactor):**
+    *   Fixed `MenuSystem::handleMenuReturn` visibility (made public) and completed its implementation for correctly handling long presses in different menu contexts (exiting edit modes, applying microstepping, cancelling confirmations). 
+*   **Benefits:**
+    *   Improved code clarity and maintainability.
+    *   Reduced coupling between modules.
+    *   Lower risk of bugs caused by unintended global state modification.
+    *   Easier future development and testing.
+
+### v1.0 (Initial Version)
+
+*   Basic functionality with 4-motor control.
+*   LCD menu system via rotary encoder.
+*   Adjustable speed, LFO modulation (depth, rate, polarity), master time, microstepping.
+*   Serial command interface.
+*   Relied heavily on global variables for state. 

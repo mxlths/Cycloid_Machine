@@ -7,7 +7,8 @@
 #ifndef SERIAL_INTERFACE_H
 #define SERIAL_INTERFACE_H
 
-#include "Config.h"
+// #include "Config.h" // Config likely not needed directly here anymore
+#include <Arduino.h> // Include base Arduino types (like bool)
 
 // Serial interface functions
 void setupSerial();

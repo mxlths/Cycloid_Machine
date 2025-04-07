@@ -332,28 +332,62 @@ void handleMenuSelection() {
   updateDisplay();
 }
 
-// Handle menu return or system pause
-void handleMenuReturn() {
+// Handle long button press for return/pause (called by InputHandling)
+void handleMenuReturn() { 
   if (currentMenu == MENU_MAIN) {
-    // Toggle pause
-    systemPaused = !systemPaused;
-    
+    // Toggle pause directly using the internal static variable
+    systemPaused = !systemPaused; 
     if (systemPaused) {
-      // Stop all motors when paused
-      stopAllMotors();
+      stopAllMotors(); // Call MotorControl function
+      Serial.println(F("System Paused (Menu)")); // Add feedback
+    } else {
+      Serial.println(F("System Resumed (Menu)")); // Add feedback
     }
+    // Update display immediately after state change
+    updateDisplay(); 
+  } else if (editingSpeed || editingLfo || editingMaster) {
+     // REPLACE placeholder: If editing a value, long press just exits edit mode
+     editingSpeed = false;
+     editingLfo = false;
+     editingMaster = false;
+     Serial.println(F("Exited edit mode")); // Optional feedback
+     updateDisplay(); // Update display to remove edit indicator '#'
   } else if (currentMenu == MENU_MICROSTEP) {
-    // Apply microstepping change on long press
-    updateMicrostepMode(currentMicrostepMode);
-    
-    // Return to main menu
-    returnToMainMenu();
+    // REPLACE placeholder: If editing, apply the pending change. If not editing, return.
+    if (editingMicrostep) {
+        if (updateMicrostepMode(pendingMicrostepMode)) {
+            Serial.print(F("Microstepping updated to "));
+            Serial.print(pendingMicrostepMode);
+            Serial.println("x (Menu)");
+        } else {
+             Serial.println(F("Microstepping update failed!"));
+             pendingMicrostepMode = getCurrentMicrostepMode(); // Revert pending
+             // Update index too
+             for (byte i = 0; i < NUM_VALID_MICROSTEPS; i++) {
+                if (validMicrosteps[i] == pendingMicrostepMode) {
+                    currentMicrostepIndex = i;
+                    break;
+                }
+             }
+        }
+        editingMicrostep = false; // Exit editing mode
+        // Don't return to main menu automatically, stay in microstep menu
+        updateDisplay(); // Update display to show applied value without '#'
+    } else {
+         returnToMainMenu(); // Not editing, long press returns to main menu
+         // updateDisplay is called within returnToMainMenu
+    }
+  } else if (confirmingRatio || confirmingReset) {
+      // If confirming something, long press cancels and returns to main menu
+      confirmingRatio = false;
+      confirmingReset = false;
+      returnToMainMenu();
+      // updateDisplay is called within returnToMainMenu
   } else {
-    // Return to main menu from any other submenu
+    // Default behavior: Return to main menu from any other submenu/state
     returnToMainMenu();
+    // updateDisplay is called within returnToMainMenu
   }
-  
-  updateDisplay();
 }
 
 // Handle SPEED menu navigation
@@ -446,4 +480,26 @@ void handleResetMenu(int change) {
     // Toggle YES/NO choice
     if (change != 0) resetChoice = !resetChoice;
   }
-} 
+}
+
+// --- Getter for Pause State ---
+bool getSystemPaused() {
+    return systemPaused;
+}
+
+// --- Setter for Pause State ---
+void setSystemPaused(bool pause) {
+    if (systemPaused != pause) { // Only act on change
+        systemPaused = pause;
+        if (systemPaused) {
+            stopAllMotors(); // Ensure motors stop if paused externally
+            Serial.println(F("System Pause Set Externally"));
+        } else {
+             Serial.println(F("System Resume Set Externally"));
+        }
+        updateDisplay(); // Update display to reflect the change
+    }
+}
+
+// --- Internal Static Functions ---
+static void displayPaused(char* line1, char* line2); 

@@ -7,9 +7,25 @@
 #include "MotorControl.h"
 #include <math.h>
 
-// Define variables for motor control
-unsigned long lastMotorUpdateTime = 0;
-byte currentMicrostepMode = MICROSTEP_FULL;  // Default to full step mode
+// --- Internal State Variables ---
+
+struct MotorSettings {
+    float wheelSpeed = 10.0; // Default base speed
+    float lfoDepth = 0.0;    // LFO Depth percentage (0-100)
+    float lfoRate = 0.0;     // LFO Rate (cycles per masterTime)
+    bool lfoPolarity = false; // false = UNI, true = BI
+    float currentActualSpeed = 0.0; // Calculated steps/sec
+    unsigned long lfoPhase = 0;     // LFO phase (0 to LFO_RESOLUTION-1)
+};
+
+static MotorSettings motorSettings[MOTORS_COUNT];
+static byte currentMicrostepMode = MICROSTEP_FULL;  // Default to full step mode
+static float masterTime = 1.00; // Master time in seconds for 1 rotation at speed 1.0
+static unsigned long lastMotorUpdateTime = 0;
+
+// --- Internal Helper Functions (moved declarations here) ---
+static void updateMotorSpeeds();
+static float calculateLfoModulation(byte motorIndex);
 
 // Initialize the stepper motors
 void setupMotors() {
@@ -31,23 +47,24 @@ bool updateMicrostepMode(byte newMode) {
   // Check if the mode is valid (must be a power of 2 up to 128)
   if (newMode != 1 && newMode != 2 && newMode != 4 && newMode != 8 && 
       newMode != 16 && newMode != 32 && newMode != 64 && newMode != 128) {
-    Serial.println(F("Invalid microstepping mode"));
+    // Serial printing can be removed or handled by the caller (Menu/Serial)
+    // Serial.println(F("Invalid microstepping mode")); 
     return false;
   }
   
-  // Store the new microstepping mode
   currentMicrostepMode = newMode;
   
-  // Reconfigure motor parameters for new step resolution
+  // Reconfigure motor parameters
   for (byte i = 0; i < MOTORS_COUNT; i++) {
     float maxSpeed = 10000.0 * currentMicrostepMode;
     steppers[i]->setMaxSpeed(maxSpeed);
     steppers[i]->setAcceleration(500 * currentMicrostepMode);
   }
   
-  Serial.print(F("Microstepping mode set to "));
-  Serial.print(currentMicrostepMode);
-  Serial.println(F("x"));
+  // Serial printing can be removed or handled by the caller
+  // Serial.print(F("Microstepping mode set to "));
+  // Serial.print(currentMicrostepMode);
+  // Serial.println(F("x"));
   
   return true;
 }
@@ -60,9 +77,9 @@ void stopAllMotors() {
 }
 
 // Update motors - main control function called from loop
-void updateMotors(unsigned long currentMillis) {
+void updateMotors(unsigned long currentMillis, bool paused) {
   // Skip if paused
-  if (systemPaused) return;
+  if (paused) return;
   
   // Update speeds periodically
   if (currentMillis - lastMotorUpdateTime >= MOTOR_UPDATE_INTERVAL) {
@@ -81,90 +98,111 @@ unsigned long getStepsPerWheelRev() {
   return STEPS_PER_MOTOR_REV * GEAR_RATIO * currentMicrostepMode;
 }
 
-// Update motor speeds based on current settings
-void updateMotorSpeeds() {
-  // Skip updating if paused
-  if (systemPaused) return;
-  
-  // Update all motor speeds
+// Update motor speeds based on current internal settings
+static void updateMotorSpeeds() {
   for (byte i = 0; i < MOTORS_COUNT; i++) {
-    // Start with base speed
-    float baseSpeed = wheelSpeeds[i];
+    // Use internal motorSettings structure
+    float baseSpeed = motorSettings[i].wheelSpeed;
     
     // Apply LFO modulation if enabled
-    if (lfoRates[i] > 0.0 && lfoDepths[i] > 0.0) {
+    if (motorSettings[i].lfoRate > 0.0 && motorSettings[i].lfoDepth > 0.0) {
       float lfoMod = calculateLfoModulation(i);
       
-      // Apply modulation to base speed
-      if (lfoPolarities[i]) {  // Bipolar modulation
+      if (motorSettings[i].lfoPolarity) { // Bipolar
         baseSpeed += lfoMod;
-      } else {  // Unipolar modulation (never reverse direction)
+      } else { // Unipolar
         baseSpeed = max(0.1, baseSpeed + lfoMod);
       }
     }
     
-    // Convert speed parameter to actual steps per second, accounting for microstepping
-    // Speed 1.0 = 1 rotation in masterTime seconds
-    // Speed 10.0 = 1/10 rotation in masterTime seconds
+    // Use internal masterTime
     float stepsPerSecond = getStepsPerWheelRev() / (masterTime * baseSpeed);
     
-    // Set motor speed
-    currentSpeeds[i] = stepsPerSecond;
+    // Store calculated speed and set motor speed
+    motorSettings[i].currentActualSpeed = stepsPerSecond;
     steppers[i]->setSpeed(stepsPerSecond);
     
-    // Update LFO phases
-    if (lfoRates[i] > 0.0) {
-      // Increment phase based on rate and elapsed time
-      // Rate 1.0 = 1 full cycle in masterTime seconds
-      float cycleRate = 1.0 / (masterTime * lfoRates[i]);
+    // Update LFO phases using internal settings
+    if (motorSettings[i].lfoRate > 0.0) {
+      float cycleRate = 1.0 / (masterTime * motorSettings[i].lfoRate);
       float phaseIncrement = (float)MOTOR_UPDATE_INTERVAL / 1000.0 * cycleRate * LFO_RESOLUTION;
-      lfoPhases[i] = (lfoPhases[i] + (unsigned long)phaseIncrement) % LFO_RESOLUTION;
+      motorSettings[i].lfoPhase = (motorSettings[i].lfoPhase + (unsigned long)phaseIncrement) % LFO_RESOLUTION;
     }
   }
 }
 
-// Calculate LFO modulation for a motor
-float calculateLfoModulation(byte motorIndex) {
-  // Calculate sine wave based on current phase (0-999)
-  float phase = (float)lfoPhases[motorIndex] / LFO_RESOLUTION * 2.0 * PI;
+// Calculate LFO modulation for a motor using internal state
+static float calculateLfoModulation(byte motorIndex) {
+  // Use internal motorSettings
+  float phase = (float)motorSettings[motorIndex].lfoPhase / LFO_RESOLUTION * 2.0 * PI;
   float sinValue = sin(phase);
   
-  // Convert to modulation amount
-  float baseSpeed = wheelSpeeds[motorIndex];
-  float depth = lfoDepths[motorIndex] / 100.0;  // Convert percentage to decimal
+  float baseSpeed = motorSettings[motorIndex].wheelSpeed;
+  float depth = motorSettings[motorIndex].lfoDepth / 100.0;
   
-  if (lfoPolarities[motorIndex]) {
-    // Bipolar: -depth% to +depth%
+  if (motorSettings[motorIndex].lfoPolarity) { // Bipolar
     return baseSpeed * depth * sinValue;
-  } else {
-    // Unipolar: 0 to +depth%
+  } else { // Unipolar
     return baseSpeed * depth * (sinValue + 1.0) / 2.0;
   }
 }
 
-// Apply a ratio preset to wheel speeds
-void applyRatioPreset(byte presetIndex) {
-  if (presetIndex < 4) {
-    for (byte i = 0; i < MOTORS_COUNT; i++) {
-      wheelSpeeds[i] = ratioPresets[presetIndex][i];
-    }
-    Serial.print(F("Applied ratio preset "));
-    Serial.println(presetIndex + 1);
+// --- Getter Implementations ---
+
+float getWheelSpeed(byte motorIndex) {
+  return (motorIndex < MOTORS_COUNT) ? motorSettings[motorIndex].wheelSpeed : 0.0;
+}
+
+float getLfoDepth(byte motorIndex) {
+  return (motorIndex < MOTORS_COUNT) ? motorSettings[motorIndex].lfoDepth : 0.0;
+}
+
+float getLfoRate(byte motorIndex) {
+  return (motorIndex < MOTORS_COUNT) ? motorSettings[motorIndex].lfoRate : 0.0;
+}
+
+bool getLfoPolarity(byte motorIndex) {
+  return (motorIndex < MOTORS_COUNT) ? motorSettings[motorIndex].lfoPolarity : false;
+}
+
+float getMasterTime() {
+  return masterTime;
+}
+
+byte getCurrentMicrostepMode() {
+  return currentMicrostepMode;
+}
+
+float getCurrentActualSpeed(byte motorIndex) {
+  return (motorIndex < MOTORS_COUNT) ? motorSettings[motorIndex].currentActualSpeed : 0.0;
+}
+
+// --- Setter Implementations ---
+
+void setWheelSpeed(byte motorIndex, float speed) {
+  if (motorIndex < MOTORS_COUNT) {
+    motorSettings[motorIndex].wheelSpeed = constrain(speed, 0.1, 256.0); // Add constraints here
   }
 }
 
-// Reset all values to defaults
-void resetToDefaults() {
-  // Reset wheel speeds
-  for (byte i = 0; i < MOTORS_COUNT; i++) {
-    wheelSpeeds[i] = 10.0;
-    lfoDepths[i] = 0.0;
-    lfoRates[i] = 0.0;
-    lfoPolarities[i] = false;  // UNI
+void setLfoDepth(byte motorIndex, float depth) {
+  if (motorIndex < MOTORS_COUNT) {
+    motorSettings[motorIndex].lfoDepth = constrain(depth, 0.0, 100.0);
   }
-  
-  // Reset master time
-  masterTime = 1.00;
-  
-  Serial.println(F("All settings reset to defaults"));
+}
+
+void setLfoRate(byte motorIndex, float rate) {
+  if (motorIndex < MOTORS_COUNT) {
+    motorSettings[motorIndex].lfoRate = constrain(rate, 0.0, 256.0);
+  }
+}
+
+void setLfoPolarity(byte motorIndex, bool isBipolar) {
+  if (motorIndex < MOTORS_COUNT) {
+    motorSettings[motorIndex].lfoPolarity = isBipolar;
+  }
+}
+
+void setMasterTime(float time) {
+  masterTime = constrain(time, 0.01, 999.99);
 } 

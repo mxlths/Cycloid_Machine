@@ -46,23 +46,22 @@
 #define MICROSTEP_64 64        // 64 microsteps (TMC2208 only)
 #define MICROSTEP_128 128      // 128 microsteps (TMC2208 only)
 
-// Current microstepping mode (will be stored as a variable, not a constant)
-extern byte currentMicrostepMode;
-
 #define STEPS_PER_MOTOR_REV 200  // 1.8° stepper motors
 #define GEAR_RATIO 3             // 1:3 gear reduction
 #define STEPS_PER_WHEEL_REV (STEPS_PER_MOTOR_REV * GEAR_RATIO) // 600 steps
 
 #define SERIAL_BAUD_RATE 9600
 
-// Menu navigation
-#define MENU_MAIN 0
-#define MENU_SPEED 1
-#define MENU_LFO 2
-#define MENU_RATIO 3
-#define MENU_MASTER 4
-#define MENU_MICROSTEP 5
-#define MENU_RESET 6
+// Add MenuState enum
+enum MenuState {
+  MENU_MAIN = 0, // Keep explicit values for compatibility if needed, though not strictly necessary
+  MENU_SPEED,
+  MENU_LFO,
+  MENU_RATIO,
+  MENU_MASTER,
+  MENU_MICROSTEP,
+  MENU_RESET
+};
 
 // Button timing
 #define DEBOUNCE_TIME 50        // ms
@@ -88,54 +87,5 @@ extern AccelStepper* steppers[MOTORS_COUNT];
 
 // Wheel labels
 extern const char* wheelLabels[MOTORS_COUNT];
-
-// Menu State
-extern byte currentMenu;
-extern byte selectedOption;
-extern bool systemPaused;
-
-// SPEED Menu
-extern float wheelSpeeds[MOTORS_COUNT];
-extern byte selectedSpeedWheel;
-extern bool editingSpeed;
-
-// LFO Menu
-extern float lfoDepths[MOTORS_COUNT];
-extern float lfoRates[MOTORS_COUNT];
-extern bool lfoPolarities[MOTORS_COUNT];
-extern byte selectedLfoParam;
-extern bool editingLfo;
-
-// RATIO Menu
-extern const float ratioPresets[4][MOTORS_COUNT];
-extern byte selectedRatioPreset;
-extern bool confirmingRatio;
-extern bool ratioChoice;
-
-// MASTER Menu
-extern float masterTime;
-extern bool editingMaster;
-
-// RESET Menu
-extern bool confirmingReset;
-extern bool resetChoice;
-
-// Motor Control
-extern unsigned long lastMotorUpdate;
-extern float currentSpeeds[MOTORS_COUNT];
-extern unsigned long lfoPhases[MOTORS_COUNT];
-
-// Encoder state
-extern volatile int encoderPos;
-extern volatile int lastEncoded;
-extern volatile long lastEncoderTime;
-
-// Button state
-extern volatile bool buttonPressed;
-extern volatile bool buttonLongPressed;
-extern volatile unsigned long buttonPressTime;
-extern volatile bool buttonState;
-extern volatile bool lastButtonState;
-extern volatile unsigned long lastButtonDebounceTime;
 
 #endif // CONFIG_H 

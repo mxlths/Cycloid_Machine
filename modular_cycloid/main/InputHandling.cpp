@@ -7,6 +7,24 @@
 #include "InputHandling.h"
 #include "MenuSystem.h"
 
+// --- Internal State Variables (moved from Config.h) ---
+static volatile int encoderPos = 0;
+static volatile int lastEncoded = 0;
+static volatile long lastEncoderTime = 0;
+
+static volatile bool buttonPressed = false;
+static volatile bool buttonLongPressed = false;
+static volatile unsigned long buttonPressTime = 0;
+static volatile bool buttonState = true; // Assume released (HIGH) initially
+static volatile bool lastButtonState = true;
+static volatile unsigned long lastButtonDebounceTime = 0;
+
+// --- Forward Declarations for Static Functions ---
+static void updateEncoderPosition();
+static void processEncoderChange(int change);
+static void handleShortPress();
+static void handleLongPress();
+
 // Initialize encoder pins
 void setupEncoder() {
   pinMode(ENC_A_PIN, INPUT_PULLUP);
@@ -22,7 +40,7 @@ void setupEncoder() {
 }
 
 // Encoder position update (interrupt-driven)
-void updateEncoderPosition() {
+static void updateEncoderPosition() {
   // Simple debounce
   long time = micros();
   if (time - lastEncoderTime < 1000) return;  // Ignore changes within 1ms
@@ -53,7 +71,7 @@ void updateEncoderPosition() {
 }
 
 // Process encoder changes
-void processEncoderChange(int change) {
+static void processEncoderChange(int change) {
   // Forward to the menu system to handle
   handleMenuNavigation(change);
 }
@@ -107,13 +125,13 @@ void checkButtonPress() {
 }
 
 // Handle short button press
-void handleShortPress() {
+static void handleShortPress() {
   // Forward to menu system to handle
   handleMenuSelection();
 }
 
 // Handle long button press
-void handleLongPress() {
+static void handleLongPress() {
   // Forward to menu system to handle
   handleMenuReturn();
 } 
