@@ -14,7 +14,7 @@ An Arduino-based control system for a modular Cycloid Machine that controls four
 
 ## Hardware Requirements
 
-- Arduino Mega or compatible board
+- Arduino Uno, Mega or compatible board
 - 4 stepper motors with drivers (A4988 or similar)
 - 16x2 LCD with I2C interface
 - Rotary encoder with push button
@@ -55,7 +55,16 @@ See `Config.h` for pin definitions and configuration options.
 
 ## Version History
 
-### v1.3 (Current)
+### v1.4 (Current)
+- Fixed variable name inconsistency in MenuSystem (standardized to selectedMainMenuOption)
+- Added missing variable declarations (ratioChoice, resetChoice) in MenuSystem
+- Added missing constant definitions (LFO_RESOLUTION, encoder constants) to Config.h
+- Fixed function forward declarations in MotorControl
+- Corrected function name mismatches between declarations and usage
+- Enhanced code stability and reduced potential for runtime errors
+- Standardized naming conventions across the codebase
+
+### v1.3
 - Fixed inconsistencies in function visibility across all modules
 - Removed direct hardware microstepping pin control (now jumper-configured)
 - Improved input validation in all setter functions with bounds checking

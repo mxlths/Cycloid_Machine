@@ -39,6 +39,8 @@ static bool editingMaster = false;
 static bool editingMicrostep = false;
 static bool confirmingRatio = false;
 static bool confirmingReset = false;
+static bool ratioChoice = false; // false=NO, true=YES for ratio preset confirmation
+static bool resetChoice = false; // false=NO, true=YES for reset confirmation
 
 // Pause state
 static bool systemPaused = false;
@@ -194,7 +196,7 @@ void handleMenuNavigation(int change) {
   switch (currentMenu) {
     case MENU_MAIN:
       // Cycle through main menu options
-      selectedOption = (selectedOption + 6 + change) % 6;  // 6 options total
+      selectedMainMenuOption = (selectedMainMenuOption + 6 + change) % 6;  // 6 options total
       break;
       
     case MENU_SPEED:
@@ -232,7 +234,7 @@ void handleMenuSelection() {
   switch (currentMenu) {
     case MENU_MAIN:
       // Enter selected submenu
-      enterSubmenu(selectedOption + 1);  // +1 because MENU_MAIN is 0
+      enterSubmenu(selectedMainMenuOption + 1);  // +1 because MENU_MAIN is 0
       break;
       
     case MENU_SPEED:
@@ -480,9 +482,9 @@ static void displayPaused(char* line1, char* line2) {
 static void displayMainMenu(char* line1, char* line2) {
   // Simple sliding window display for main menu
   const char* options[] = {"SPEED", "LFO", "RATIO", "MASTER", "STEP", "RESET"};
-  byte prev = (selectedOption + NUM_MAIN_OPTIONS - 1) % NUM_MAIN_OPTIONS;
-  byte next = (selectedOption + 1) % NUM_MAIN_OPTIONS;
-  sprintf(line1, ">%s", options[selectedOption]);
+  byte prev = (selectedMainMenuOption + NUM_MAIN_OPTIONS - 1) % NUM_MAIN_OPTIONS;
+  byte next = (selectedMainMenuOption + 1) % NUM_MAIN_OPTIONS;
+  sprintf(line1, ">%s", options[selectedMainMenuOption]);
   sprintf(line2, " %s %s %s", options[prev], options[next], options[(next+1)%NUM_MAIN_OPTIONS]); // Show more context
 }
 

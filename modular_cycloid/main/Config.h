@@ -32,6 +32,13 @@
 #define ENCODER_PIN_B A1
 #define ENCODER_BTN_PIN A2
 
+// For backwards compatibility with InputHandling.cpp
+#define ENC_A_PIN ENCODER_PIN_A
+#define ENC_B_PIN ENCODER_PIN_B
+#define ENC_BTN_PIN ENCODER_BTN_PIN
+#define DEBOUNCE_TIME 50    // Button debounce time in ms
+#define LONG_PRESS_TIME 1000 // Long press detection threshold in ms
+
 // LCD I2C Address
 #define LCD_SDA A4
 #define LCD_SCL A5
@@ -93,6 +100,7 @@ const float RATIO_PRESETS[NUM_RATIO_PRESETS][MOTORS_COUNT] = {
 #define LFO_DEPTH_MAX 100   // Maximum LFO depth as a percentage
 #define LFO_RATE_MAX 10     // Maximum LFO rate in Hz
 #define LFO_UPDATE_INTERVAL 5 // Update interval in milliseconds
+#define LFO_RESOLUTION 1000   // Phase resolution for smoother LFO
 
 // --- MICROSTEPPING CONFIGURATION ---
 #define NUM_VALID_MICROSTEPS 8

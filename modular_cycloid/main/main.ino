@@ -52,7 +52,7 @@ void setup() {
   // Initialize systems in order
   setupMotors();        // Initialize motor parameters and enable pin
   setupLCD();           // Initialize LCD display
-  setupEncoders();      // Initialize rotary encoder pins and state
+  setupEncoder();       // Initialize rotary encoder pins and state
   setupSerialCommands();// Initialize serial command buffer
   
   // Show initial display after all setup
@@ -71,7 +71,7 @@ void loop() {
   processSerialCommands();
   
   // Check and handle encoder/button inputs (updates menu state)
-  checkEncoders();
+  checkButtonPress();
   
   // Get current system paused state from MenuSystem
   bool paused = getSystemPaused();

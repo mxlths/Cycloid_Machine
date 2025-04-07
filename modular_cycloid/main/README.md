@@ -70,7 +70,7 @@ Available commands via Serial (9600 baud):
 - `PAUSE` - Pause all motors
 - `RESUME` - Resume operation
 - `RESET` - Reset to default values
-- `MICROSTEP value` - Set microstepping mode (1, 2, 4, 8, 16, 32, 64, or 128)
+- `MICROSTEP value` - Set microstepping mode as per board jumper settings (1, 2, 4, 8, 16, 32, 64, or 128)
 - `SPEED X value` - Set X wheel speed (0.1-256.0)
 - `LFO X DEPTH value` - Set X LFO depth (0-100%)
 - `LFO X RATE value` - Set X LFO rate (0-256)

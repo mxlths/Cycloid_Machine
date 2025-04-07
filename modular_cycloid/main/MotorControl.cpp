@@ -14,6 +14,13 @@
 // 'steppers' array are defined in main.ino and declared extern in Config.h.
 // Do NOT redefine them here.
 
+// Steps per full wheel revolution (calculated based on microstepping)
+static unsigned long stepsPerRev = 200 * DEFAULT_MICROSTEP;
+
+// Forward declaration for internal reset helper
+static void resetMotorSettings();
+static float calculateMotorStepRate(byte motorIndex);
+
 // --- Motor Settings ---
 // Variables to store the state of each motor
 struct MotorSetting {
@@ -34,9 +41,6 @@ static byte currentMicrostepMode = DEFAULT_MICROSTEP;
 
 // LFO update timing
 static unsigned long lastMotorUpdateTime = 0;
-
-// Steps per full wheel revolution (calculated based on microstepping)
-static unsigned long stepsPerRev = 200 * DEFAULT_MICROSTEP;
 
 // Forward declaration for internal reset helper
 static void resetMotorSettings();
