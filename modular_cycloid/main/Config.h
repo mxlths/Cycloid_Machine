@@ -102,10 +102,6 @@ const float RATIO_PRESETS[NUM_RATIO_PRESETS][MOTORS_COUNT] = {
 #define LFO_UPDATE_INTERVAL 5 // Update interval in milliseconds
 #define LFO_RESOLUTION 1000   // Phase resolution for smoother LFO
 
-// --- RAMPING CONFIGURATION ---
-#define RAMP_TIME 5000        // Ramp time in milliseconds (5 seconds)
-#define RAMP_UPDATE_INTERVAL 50  // Update interval for ramping (50ms = 20Hz)
-
 // --- MICROSTEPPING CONFIGURATION ---
 #define NUM_VALID_MICROSTEPS 8
 const int VALID_MICROSTEPS[NUM_VALID_MICROSTEPS] = {1, 2, 4, 8, 16, 32, 64, 128};

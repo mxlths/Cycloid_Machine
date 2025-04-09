@@ -21,12 +21,6 @@ static unsigned long stepsPerRev = 200 * DEFAULT_MICROSTEP;
 static void resetMotorSettings();
 static float calculateMotorStepRate(byte motorIndex);
 
-// Add these variables to the top with other static variables
-static bool isRamping = false;
-static bool rampingUp = false;
-static unsigned long rampStartTime = 0;
-static float savedSpeeds[MOTORS_COUNT];  // To store speeds during ramping
-
 // --- Motor Settings ---
 // Variables to store the state of each motor
 struct MotorSetting {
@@ -76,62 +70,38 @@ void setupMotors() {
 
 // --- Motor Control ---
 void updateMotors(unsigned long currentMillis, bool paused) {
-  static bool wasPaused = true;  // Initialize as true since we start paused
-  
-  // Check for pause state change
-  if (paused != wasPaused) {
-    if (!isRamping) {  // Only start ramping if we're not already ramping
-      isRamping = true;
-      rampingUp = !paused;
-      rampStartTime = currentMillis;
-      
-      // Store current speeds if ramping down, or restore if ramping up
-      if (!rampingUp) {
-        for (byte i = 0; i < MOTORS_COUNT; i++) {
-          savedSpeeds[i] = calculateMotorStepRate(i);
-        }
-      }
-    }
-    wasPaused = paused;
-  }
-  
-  // If we're ramping or paused, handle special speed calculations
-  if (isRamping || paused) {
-    float rampFactor = isRamping ? calculateRampFactor(currentMillis) : 0.0;
-    
+  // Stop motors immediately if paused
+  if (paused) {
+    // Ensure motors are stopped if they were moving
     for (byte i = 0; i < MOTORS_COUNT; i++) {
-      float targetSpeed;
-      if (rampingUp) {
-        targetSpeed = calculateMotorStepRate(i) * rampFactor;
-      } else {
-        targetSpeed = savedSpeeds[i] * rampFactor;
+      if (steppers[i]->speed() != 0) {
+        steppers[i]->setSpeed(0);
       }
-      steppers[i]->setSpeed(targetSpeed);
     }
-    
-    // Run the motors
+    // We still need to call runSpeed() to potentially decelerate
     for (byte i = 0; i < MOTORS_COUNT; i++) {
       steppers[i]->runSpeed();
     }
     return;
   }
   
-  // Normal operation (not ramping or paused)
   // Update LFO phases and motor speeds if it's time
   unsigned long deltaMillis = currentMillis - lastMotorUpdateTime;
   if (deltaMillis >= LFO_UPDATE_INTERVAL) {
-    bool speedNeedsUpdate = false;
+    bool speedNeedsUpdate = false; // Flag if any LFO caused a change
     
     // Update LFO phases first
     for (byte i = 0; i < MOTORS_COUNT; i++) {
       if (motorSettings[i].lfoRate > 0 && motorSettings[i].lfoDepth > 0) {
         unsigned int phaseIncrement = (unsigned int)((motorSettings[i].lfoRate * deltaMillis * LFO_RESOLUTION) / 1000);
         motorSettings[i].lfoPhase = (motorSettings[i].lfoPhase + phaseIncrement) % LFO_RESOLUTION;
-        speedNeedsUpdate = true;
+        speedNeedsUpdate = true; // LFO is active, speed calculation needed
       }
     }
     
-    // Update motor speeds
+    // Update motor speeds if LFO is active or if base speed potentially changed
+    // For simplicity, we recalculate speeds every interval if not paused.
+    // Optimization: could track if settings changed, but interval is small.
     for (byte i = 0; i < MOTORS_COUNT; i++) {
       float stepsPerSecond = calculateMotorStepRate(i);
       steppers[i]->setSpeed(stepsPerSecond);
@@ -140,7 +110,7 @@ void updateMotors(unsigned long currentMillis, bool paused) {
     lastMotorUpdateTime = currentMillis;
   }
   
-  // Run the motors
+  // Run the motors (this needs to be called frequently)
   for (byte i = 0; i < MOTORS_COUNT; i++) {
     steppers[i]->runSpeed();
   }
@@ -403,14 +373,4 @@ static void resetMotorSettings() {
 //   // ... (Implementation removed)
 // }
 
-// Add this helper function for ramping
-static float calculateRampFactor(unsigned long currentMillis) {
-  float elapsed = (float)(currentMillis - rampStartTime);
-  if (elapsed >= RAMP_TIME) {
-    isRamping = false;
-    return rampingUp ? 1.0 : 0.0;
-  }
-  
-  float factor = elapsed / RAMP_TIME;
-  return rampingUp ? factor : (1.0 - factor);
-} 
+// Remove the ramping helper function 
