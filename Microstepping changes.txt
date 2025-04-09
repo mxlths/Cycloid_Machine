@@ -1,0 +1,131 @@
+# Microstepping Control System Changes
+
+## High-Level Description
+
+The goal is to enhance the Cycloid Machine's microstepping capability by adding a 3-pole DIL (Dual In-Line) switch that will be wired simultaneously to all motor driver microstepping control pins (MS1, MS2, MS3). This hardware change will allow the user to adjust the microstepping resolution for all motors at once without having to modify jumpers individually. Additionally, the software will be updated to:
+
+1. Allow the user to select their driver type (A4988 or TMC2208)
+2. Display the correct DIL switch positions based on the selected microstepping value and driver type
+3. Provide visual guidance in the LCD menu for setting the physical DIL switches to match the desired microstepping resolution
+
+This implementation will ensure that the software setting always reflects the hardware configuration, improving usability and reducing the chance of configuration errors.
+
+## Detailed Implementation Plan
+
+### 1. Hardware Changes
+
+- Add a 3-pole DIL switch connected in parallel to all four stepper drivers:
+  - DIL Switch Position 1 → MS1 on all four drivers
+  - DIL Switch Position 2 → MS2 on all four drivers
+  - DIL Switch Position 3 → MS3 on all four drivers
+- Each switch pin will be connected to ground when OFF and to VCC (typically 5V) when ON
+- No changes to the Arduino pins are required as these are direct hardware connections
+
+### 2. Software Modifications
+
+#### 2.1. Add Driver Type Enum and Configuration
+
+**Modify Config.h:**
+- Add an enum to define driver types (A4988, DRV8825, TMC2208)
+- Add a global variable to store the current driver type
+- Define microstepping resolution tables for each driver type
+- Define a structure to store DIL switch configurations (ON/OFF patterns) for each microstepping value
+
+#### 2.2. Microstepping Menu Enhancements
+
+**Modify MotorControl.cpp:**
+- Update the `updateMicrostepMode()` function to consider driver type when validating microstepping values
+- Add a function to get the DIL switch configuration for the current microstepping value
+
+**Modify MenuSystem.cpp:**
+- Enhance the microstepping menu to display the current driver type
+- Add a new submenu option to select the driver type
+- Update the microstepping display to show the required DIL switch settings (visual representation)
+- Add a visual indicator showing which microstepping options are valid for the current driver
+
+#### 2.3. Serial Interface Updates
+
+**Modify SerialInterface.cpp:**
+- Add a new serial command to set/get the driver type (e.g., "DRIVER A4988" or "DRIVER TMC2208")
+- Update the "MICROSTEP" command to display the DIL switch settings along with the value
+- Add a "DRIVER" command to the help menu
+
+#### 2.4. Data Storage and Initialization
+
+**Modify MotorControl.cpp:**
+- Update the driver initialization to include driver type
+- Create a lookup table that maps each valid microstepping value to its DIL switch configuration based on driver type
+- Initialize default settings based on the driver type
+
+### 3. Implementation Specifics
+
+#### 3.1. DIL Switch Configuration Table
+
+Create a lookup table that maps microstepping values to DIL switch positions:
+
+```cpp
+// DIL switch configurations for A4988 drivers
+// Format: {MS1, MS2, MS3}
+const bool A4988_DIL_CONFIGS[][3] = {
+  {0, 0, 0},  // 1x (full step)
+  {1, 0, 0},  // 2x (half step)
+  {0, 1, 0},  // 4x (quarter step)
+  {1, 1, 0},  // 8x (eighth step)
+  {1, 1, 1}   // 16x (sixteenth step)
+};
+
+// DIL switch configurations for TMC2208 drivers (example)
+const bool TMC2208_DIL_CONFIGS[][3] = {
+  {0, 0, 0},  // 1x (full step)
+  {1, 0, 0},  // 2x (half step)
+  {0, 1, 0},  // 4x (quarter step)
+  {1, 1, 0},  // 8x (eighth step)
+  {0, 0, 1},  // 16x (sixteenth step)
+  {1, 0, 1},  // 32x
+  {0, 1, 1},  // 64x
+  {1, 1, 1}   // 128x
+};
+```
+
+#### 3.2. Driver Type Selection Menu
+
+Add a new submenu within the microstepping menu:
+
+```
+DRIVER TYPE:
+>A4988
+ TMC2208
+```
+
+#### 3.3. Enhanced Microstepping Display
+
+Update the microstepping menu to display DIL switch positions:
+
+```
+MICROSTEP: 16x
+DIL: [ON ON ON]
+```
+
+#### 3.4. Implementation Sequence
+
+1. Add the driver type enum and configuration structures
+2. Create DIL switch position lookup tables
+3. Update the microstepping menu with DIL switch visualization
+4. Add driver type selection menu
+5. Update serial interface commands
+6. Test and validate changes with different driver types and microstepping values
+
+### 4. Compatibility Considerations
+
+- The system should maintain backward compatibility, defaulting to A4988 drivers if no selection is made
+- Invalid microstepping values for a given driver should be automatically rejected
+- The system should warn users if they attempt to set a microstepping value that isn't supported by their selected driver type
+- The DIL switch display should be clear and intuitive, possibly using symbols like [ON OFF ON] or similar visual representation
+
+### 5. Testing Plan
+
+1. Verify that DIL switch settings are correctly displayed for all valid microstepping values
+2. Test driver type selection and its effect on available microstepping options
+3. Validate that the serial interface correctly handles the new commands
+4. Confirm that the microstepping display updates properly when changing driver type or microstepping value
+5. Test edge cases like invalid microstepping values for a given driver type 
