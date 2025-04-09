@@ -19,7 +19,7 @@
 // Debug flags - uncomment to enable specific debug output
 // #define DEBUG_TIMING
 // #define DEBUG_INPUT
-// #define DEBUG_MOTORS
+#define DEBUG_MOTORS
 
 // --- Global Hardware Objects ---
 // LCD Display
@@ -48,6 +48,12 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   Serial.println(F("\nCycloid Machine Controller v1.2")); // Updated version
   Serial.println(F("Initializing... (System will start paused)"));
+  
+  // Configure stepper motors for speed-based control
+  for (byte i = 0; i < MOTORS_COUNT; i++) {
+    steppers[i]->setCurrentPosition(0);
+    steppers[i]->setMaxSpeed(2000.0);
+  }
   
   // Initialize systems in order
   setupMotors();        // Initialize motor parameters and enable pin
@@ -91,9 +97,9 @@ void loop() {
   }
   #endif
 
-  // Optional: Small delay to prevent overwhelming the processor, 
-  // but AccelStepper generally benefits from frequent .runSpeed() calls in updateMotors
-  // delay(1);
+  // Small delay to prevent overwhelming the processor
+  // AccelStepper generally benefits from frequent .runSpeed() calls in updateMotors
+  delay(1);
 }
 
 // REMOVE unused function

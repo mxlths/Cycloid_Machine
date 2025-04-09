@@ -291,18 +291,10 @@ void handleMenuSelection() {
 }
 
 // Handle long button press for return/pause (called by InputHandling)
-void handleMenuReturn() { 
+void handleMenuReturn() {
   if (currentMenu == MENU_MAIN) {
-    // Toggle pause directly using the internal static variable
-    systemPaused = !systemPaused; 
-    if (systemPaused) {
-      stopAllMotors(); // Call MotorControl function
-      Serial.println(F("System Paused (Menu)")); // Add feedback
-    } else {
-      Serial.println(F("System Resumed (Menu)")); // Add feedback
-    }
-    // Update display immediately after state change
-    updateDisplay(); 
+    // Toggle pause state via the setter function for consistent logic
+    setSystemPaused(!getSystemPaused()); // Use getter/setter
   } else if (editingSpeed || editingLfo || editingMaster) {
      // REPLACE placeholder: If editing a value, long press just exits edit mode
      editingSpeed = false;
@@ -454,7 +446,28 @@ void setSystemPaused(bool pause) {
             stopAllMotors(); // Ensure motors stop if paused externally
             Serial.println(F("System Pause Set Externally"));
         } else {
-             Serial.println(F("System Resume Set Externally"));
+            Serial.println(F("System Resume Set Externally"));
+            // Explicitly enable motors when resuming
+            enableAllMotors();
+            
+            // Set initial speeds for all motors
+            for (byte i = 0; i < MOTORS_COUNT; i++) {
+                float stepsPerSecond = calculateMotorStepRate(i);
+                steppers[i]->setSpeed(stepsPerSecond);
+                // // Force a runSpeed() call to ensure motors start moving
+                // // This is likely redundant as updateMotors() handles the running loop
+                // steppers[i]->runSpeed();
+            }
+            
+            // Debug output to verify motor speeds
+            Serial.println(F("Motor speeds on resume:"));
+            for (byte i = 0; i < MOTORS_COUNT; i++) {
+                Serial.print(F("Motor "));
+                Serial.print(i);
+                Serial.print(F(": "));
+                Serial.print(calculateMotorStepRate(i));
+                Serial.println(F(" steps/sec"));
+            }
         }
         updateDisplay(); // Update display to reflect the change
     }

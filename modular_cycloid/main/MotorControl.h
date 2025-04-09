@@ -20,6 +20,7 @@ void resetToDefaults();
 
 // Motor control functions
 void updateMotors(unsigned long currentMillis, bool paused);
+float calculateMotorStepRate(byte motorIndex);
 
 // --- Getter Functions ---
 float getWheelSpeed(byte motorIndex);

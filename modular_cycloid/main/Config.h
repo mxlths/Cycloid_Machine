@@ -108,7 +108,7 @@ const int VALID_MICROSTEPS[NUM_VALID_MICROSTEPS] = {1, 2, 4, 8, 16, 32, 64, 128}
 
 // --- DEFAULT VALUES ---
 #define DEFAULT_MASTER_TIME 1000 // Default master time (period) in milliseconds (e.g., 1000ms for 60RPM at speed 1.0)
-#define DEFAULT_SPEED_RATIO 1.0 // Default ratio for all motors
+#define DEFAULT_SPEED_RATIO 0.1 // Default ratio for all motors - TEMPORARILY LOWERED FOR TESTING
 #define DEFAULT_LFO_DEPTH 0     // Default LFO depth (0 = off)
 #define DEFAULT_LFO_RATE 1      // Default LFO rate in Hz
 #define DEFAULT_LFO_POLARITY false // Default LFO polarity (false = unipolar)

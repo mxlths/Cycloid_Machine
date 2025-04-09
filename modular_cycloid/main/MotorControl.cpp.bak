@@ -14,11 +14,22 @@
 // 'steppers' array are defined in main.ino and declared extern in Config.h.
 // Do NOT redefine them here.
 
-// Motor speed configuration
+// Motor Configuration
+#define MOTORS_COUNT 3
+#define STEPS_PER_REV 200
+#define DEFAULT_MICROSTEP 8
+#define DEFAULT_SPEED_RATIO 0.5
+#define DEFAULT_LFO_DEPTH 0.5
+#define DEFAULT_LFO_RATE 0.5
+#define DEFAULT_LFO_POLARITY true
+#define DEFAULT_MASTER_TIME 1000.0
+#define LFO_DEPTH_MAX 1.0
+#define LFO_RATE_MAX 1.0
 #define MOTOR_MAX_SPEED 2000.0     // Steps per second
+#define MOTOR_ACCELERATION 1000.0  // Steps per second per second
 
 // Steps per full wheel revolution (calculated based on microstepping)
-static unsigned long stepsPerRev = STEPS_PER_MOTOR_REV * DEFAULT_MICROSTEP;
+static unsigned long stepsPerRev = 200 * DEFAULT_MICROSTEP;
 
 // Forward declaration for internal reset helper
 static void resetMotorSettings();
@@ -45,31 +56,17 @@ static byte currentMicrostepMode = DEFAULT_MICROSTEP;
 // LFO update timing
 static unsigned long lastMotorUpdateTime = 0;
 
+// Forward declaration for internal reset helper
+static void resetMotorSettings();
+
 // --- Motor Setup ---
 void setupMotors() {
-  // Initialize stepper motors with max speed
-  for (byte i = 0; i < MOTORS_COUNT; i++) {
-    steppers[i]->setMaxSpeed(MOTOR_MAX_SPEED);
-    steppers[i]->setCurrentPosition(0);
-  }
   
   // Initialize microstepping
   updateMicrostepMode(DEFAULT_MICROSTEP);
   
   // Initialize motor settings
   resetMotorSettings();
-  
-  // Enable motors at startup
-  enableAllMotors();
-  
-  // Set initial speeds to zero
-  for (byte i = 0; i < MOTORS_COUNT; i++) {
-    steppers[i]->setSpeed(0);
-  }
-  
-  // Debug output
-  Serial.println(F("Motors initialized with max speed: "));
-  Serial.println(MOTOR_MAX_SPEED);
 }
 
 // --- Motor Control ---
@@ -78,96 +75,60 @@ void updateMotors(unsigned long currentMillis, bool paused) {
   if (paused) {
     // Ensure motors are stopped if they were moving
     for (byte i = 0; i < MOTORS_COUNT; i++) {
-      steppers[i]->setSpeed(0);
+      if (steppers[i]->speed() != 0) {
+        steppers[i]->setSpeed(0);
+      }
+    }
+    // We still need to call runSpeed() to potentially decelerate
+    for (byte i = 0; i < MOTORS_COUNT; i++) {
+      steppers[i]->runSpeed();
     }
     return;
   }
   
-  // Always update motor speeds on each call to ensure they're running
-  // This is more reliable than waiting for the LFO update interval
-  
-  // Update LFO phases if it's time
+  // Update LFO phases and motor speeds if it's time
   unsigned long deltaMillis = currentMillis - lastMotorUpdateTime;
   if (deltaMillis >= LFO_UPDATE_INTERVAL) {
+    bool speedNeedsUpdate = false; // Flag if any LFO caused a change
+    
     // Update LFO phases first
     for (byte i = 0; i < MOTORS_COUNT; i++) {
       if (motorSettings[i].lfoRate > 0 && motorSettings[i].lfoDepth > 0) {
         unsigned int phaseIncrement = (unsigned int)((motorSettings[i].lfoRate * deltaMillis * LFO_RESOLUTION) / 1000);
         motorSettings[i].lfoPhase = (motorSettings[i].lfoPhase + phaseIncrement) % LFO_RESOLUTION;
+        speedNeedsUpdate = true; // LFO is active, speed calculation needed
       }
+    }
+    
+    // Update motor speeds if LFO is active or if base speed potentially changed
+    for (byte i = 0; i < MOTORS_COUNT; i++) {
+      float stepsPerSecond = calculateMotorStepRate(i);
+      
+      // Calculate target position (one full rotation)
+      long targetPosition = steppers[i]->currentPosition() + (stepsPerSecond > 0 ? stepsPerRev : -stepsPerRev);
+      
+      // Set target position and max speed
+      steppers[i]->setMaxSpeed(abs(stepsPerSecond));
+      steppers[i]->moveTo(targetPosition);
     }
     
     lastMotorUpdateTime = currentMillis;
   }
   
-  // Update motor speeds (do this on every call)
-  for (byte i = 0; i < MOTORS_COUNT; i++) {
-    float stepsPerSecond = calculateMotorStepRate(i);
-    
-    // Debug output for first motor
-    #ifdef DEBUG_MOTORS
-    if (i == 0) {
-      static unsigned long lastDebugTime = 0;
-      if (currentMillis - lastDebugTime > 1000) { // Print every second
-        Serial.print(F("Motor 0 speed: "));
-        Serial.println(stepsPerSecond);
-        lastDebugTime = currentMillis;
-      }
-    }
-    #endif
-    
-    // Set the speed directly
-    steppers[i]->setSpeed(stepsPerSecond);
-  }
-  
   // Run the motors (this needs to be called frequently)
   for (byte i = 0; i < MOTORS_COUNT; i++) {
-    steppers[i]->runSpeed();
+    steppers[i]->run();
   }
 }
 
 // Helper function to calculate motor step rate including LFO
 float calculateMotorStepRate(byte motorIndex) {
-
-  // >>> TEMPORARY DEBUG START <<<
-  Serial.print("[CalcRate M"); Serial.print(motorIndex); Serial.print("]");
-  Serial.print(" masterT="); Serial.print(masterTime);
-  Serial.print(" wheelSpd="); Serial.print(motorSettings[motorIndex].wheelSpeed);
-  Serial.print(" stepsRev="); Serial.println(stepsPerRev);
-  // >>> TEMPORARY DEBUG END <<<
-
   // Base steps per second calculation:
   // Speed (Revolutions per Second) = (1 / masterTime_seconds) * wheelSpeed_ratio
   // Steps per Second = Speed (RPS) * stepsPerRev
   // masterTime is in ms, so masterTime_seconds = masterTime / 1000.0
   // RPS = (1000.0 / masterTime) * motorSettings[motorIndex].wheelSpeed
-  
-  // Ensure we don't divide by zero
-  if (masterTime <= 0) {
-    masterTime = DEFAULT_MASTER_TIME;
-  }
-  
-  // Calculate base steps per second
   float baseStepsPerSecond = (1000.0 / masterTime) * motorSettings[motorIndex].wheelSpeed * stepsPerRev;
-  
-  // Debug output for first motor
-  #ifdef DEBUG_MOTORS
-  if (motorIndex == 0) {
-    static unsigned long lastDebugTime = 0;
-    unsigned long currentTime = millis();
-    if (currentTime - lastDebugTime > 2000) { // Print every 2 seconds
-      Serial.print(F("Motor 0 base speed: "));
-      Serial.print(baseStepsPerSecond);
-      Serial.print(F(" steps/sec, wheelSpeed: "));
-      Serial.print(motorSettings[motorIndex].wheelSpeed);
-      Serial.print(F(", masterTime: "));
-      Serial.print(masterTime);
-      Serial.print(F(" ms, stepsPerRev: "));
-      Serial.println(stepsPerRev);
-      lastDebugTime = currentTime;
-    }
-  }
-  #endif
   
   // Apply LFO if enabled
   if (motorSettings[motorIndex].lfoDepth > 0) {
@@ -186,26 +147,15 @@ float calculateMotorStepRate(byte motorIndex) {
 
 void stopAllMotors() {
   for (byte i = 0; i < MOTORS_COUNT; i++) {
-    steppers[i]->setSpeed(0);
+    steppers[i]->stop(); // Use stop() for abrupt stop with deceleration if configured
+    // or steppers[i]->setSpeed(0); for immediate speed change
   }
   Serial.println(F("Motors stopped"));
 }
 
 void enableAllMotors() {
-  // Set enable pin LOW to enable motors (most stepper drivers are active LOW)
-  digitalWrite(ENABLE_PIN, LOW);
-  
-  // Also ensure each stepper is enabled
-  for (byte i = 0; i < MOTORS_COUNT; i++) {
-    steppers[i]->enableOutputs();
-  }
-  
-  // Debug output
-  Serial.println(F("Motors enabled - ENABLE_PIN set to LOW"));
-  
-  // Print pin state for debugging
-  Serial.print(F("ENABLE_PIN state: "));
-  Serial.println(digitalRead(ENABLE_PIN));
+  digitalWrite(ENABLE_PIN, LOW); // LOW = enabled for most drivers
+  Serial.println(F("Motors enabled"));
 }
 
 void disableAllMotors() {
@@ -235,11 +185,12 @@ bool updateMicrostepMode(byte newMode) {
       currentMicrostepMode = newMode;
       
       // Update steps per revolution based on the new mode
-      stepsPerRev = STEPS_PER_MOTOR_REV * currentMicrostepMode;
+      stepsPerRev = 200 * currentMicrostepMode;
       
-      // Update AccelStepper parameters (MaxSpeed scales with microsteps)
+      // Update AccelStepper parameters (MaxSpeed/Acceleration scale with microsteps)
       for (byte i = 0; i < MOTORS_COUNT; i++) {
         steppers[i]->setMaxSpeed(MOTOR_MAX_SPEED);
+        steppers[i]->setAcceleration(MOTOR_ACCELERATION);
       }
       
       Serial.print(F("Microstep mode set to: "));
@@ -362,22 +313,15 @@ void resetToDefaults() {
 static void resetMotorSettings() {
   masterTime = DEFAULT_MASTER_TIME;
   currentMicrostepMode = DEFAULT_MICROSTEP; // Keep track of the intended mode
-  stepsPerRev = STEPS_PER_MOTOR_REV * currentMicrostepMode;
+  stepsPerRev = 200 * currentMicrostepMode;
   
-  // Set default values for all motors
   for (byte i = 0; i < MOTORS_COUNT; i++) {
     motorSettings[i].wheelSpeed = DEFAULT_SPEED_RATIO;
     motorSettings[i].lfoDepth = DEFAULT_LFO_DEPTH;
     motorSettings[i].lfoRate = DEFAULT_LFO_RATE;
     motorSettings[i].lfoPolarity = DEFAULT_LFO_POLARITY;
     motorSettings[i].lfoPhase = 0;
-    
-    // Ensure motors are stopped initially
-    steppers[i]->setSpeed(0);
   }
-  
-  // Reset the last update time
-  lastMotorUpdateTime = 0;
 }
 
 // // --- Motor Configuration ---
@@ -434,3 +378,48 @@ static void resetMotorSettings() {
 //   // ... (Implementation removed)
 // }
 
+// Remove the ramping helper function 
+
+  
+  // Initialize microstepping
+  updateMicrostepMode(DEFAULT_MICROSTEP);
+  
+  // Initialize motor settings
+  resetMotorSettings();
+}
+
+    
+    // Convert speed ratio to steps per second
+    float stepsPerSecond = baseSpeed * (stepsPerRev / timeRatio);
+    
+    // Calculate target position (one full rotation)
+    long targetPosition = motors[i].currentPosition() + (stepsPerSecond > 0 ? stepsPerRev : -stepsPerRev);
+    
+    // Set target position and max speed
+    motors[i].setMaxSpeed(abs(stepsPerSecond));
+    motors[i].moveTo(targetPosition);
+    
+    // Run the motor
+    motors[i].run();
+  }
+}
+
+  
+  currentMicrostepMode = microsteps;
+  stepsPerRev = 200 * currentMicrostepMode;
+  
+  // Update microstep pins for all motors
+  for (byte i = 0; i < MOTORS_COUNT; i++) {
+    // Set microstep pins based on the mode
+    digitalWrite(microstepPins[i][0], (microsteps & 1) ? HIGH : LOW);
+    digitalWrite(microstepPins[i][1], (microsteps & 2) ? HIGH : LOW);
+    digitalWrite(microstepPins[i][2], (microsteps & 4) ? HIGH : LOW);
+    
+    // Update acceleration and max speed for the new steps per revolution
+    motors[i].setMaxSpeed(MAX_SPEED);
+    motors[i].setAcceleration(ACCELERATION);
+  }
+  
+  Serial.print(F("Microstep mode updated to 1/"));
+  Serial.println(microsteps);
+} 
