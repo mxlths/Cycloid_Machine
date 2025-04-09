@@ -47,7 +47,7 @@ void setup() {
   // Initialize serial communication FIRST for debugging output
   Serial.begin(SERIAL_BAUD);
   Serial.println(F("\nCycloid Machine Controller v1.2")); // Updated version
-  Serial.println(F("Initializing..."));
+  Serial.println(F("Initializing... (System will start paused)"));
   
   // Initialize systems in order
   setupMotors();        // Initialize motor parameters and enable pin
@@ -58,8 +58,9 @@ void setup() {
   // Show initial display after all setup
   updateDisplay();
   
-  Serial.println(F("Initialization complete"));
+  Serial.println(F("Initialization complete - System is PAUSED"));
   Serial.println(F("Type 'help' for available commands"));
+  Serial.println(F("Use 'resume' command or long-press encoder to start"));
 }
 
 // Loop function - called repeatedly after setup

@@ -73,7 +73,7 @@ void executeCommand(char* command) {
   }
   // Reset command
   if (strcmp(command, "reset") == 0) {
-    MotorControl::resetToDefaults(); // Call MotorControl public reset
+    resetToDefaults(); // Call MotorControl public reset
     // Menu state is reset internally if needed via MotorControl calls
     Serial.println(F("All motor settings reset to defaults via Serial"));
     return;
@@ -149,7 +149,9 @@ void executeCommand(char* command) {
           setWheelSpeed(i, RATIO_PRESETS[presetIndex][i]);
       }
     } else {
-      Serial.println(F("Error: Invalid preset number (1-") + String(NUM_RATIO_PRESETS) + F(")"));
+      Serial.print(F("Error: Invalid preset number (1-"));
+      Serial.print(NUM_RATIO_PRESETS);
+      Serial.println(F(")"));
     }
     return;
   }
@@ -175,29 +177,46 @@ void printHelp() {
   Serial.println(F("rate<n>=<value>          - Set LFO rate 0-10Hz (n=1-4, e.g., rate3=2.5)"));
   Serial.println(F("polarity<n>=<0/1>        - Set LFO polarity: 0=uni, 1=bi (n=1-4, e.g., polarity4=1)"));
   Serial.println(F("microstep=<value>        - Set microstepping (1,2,4,8,16,32,64,128)"));
-  Serial.println(F("preset=<value>           - Apply ratio preset (1-") + String(NUM_RATIO_PRESETS) + F(")"));
+  Serial.print(F("preset=<value>           - Apply ratio preset (1-"));
+  Serial.print(NUM_RATIO_PRESETS);
+  Serial.println(F(")"));
 }
 
 // Print system status
 void printSystemStatus() {
   Serial.println(F("\n--- System Status ---"));
   Serial.print(F("System state: ")); Serial.println(getSystemPaused() ? F("PAUSED") : F("RUNNING"));
-  Serial.print(F("Master time: ")); Serial.println(getMasterTime());
-  Serial.print(F("Microstepping: ")); Serial.println(getCurrentMicrostepMode());
+  Serial.print(F("Master time: ")); Serial.print(getMasterTime()); Serial.println(F(" ms"));
+  Serial.print(F("Microstepping: ")); Serial.print(getCurrentMicrostepMode()); Serial.println(F("x"));
   
   Serial.println(F("\n--- Wheel Settings ---"));
   Serial.println(F("Wheel | Ratio | LFO Dep | LFO Rate | LFO Pol | Actual Speed (Steps/s)"));
   Serial.println(F("------|-------|---------|----------|---------|------------------------"));
   
-  char buffer[100];
   for (byte i = 0; i < MOTORS_COUNT; i++) {
-    sprintf(buffer, " %-4d | %-5.2f | %-7.1f | %-8.2f | %-7s | %.2f",
-            i + 1,
-            getWheelSpeed(i),
-            getLfoDepth(i),
-            getLfoRate(i),
-            getLfoPolarity(i) ? "Bipolar" : "Unipolar",
-            getCurrentActualSpeed(i)); // Get speed in steps/sec
-    Serial.println(buffer);
+    Serial.print(F(" ")); 
+    Serial.print(i + 1); 
+    Serial.print(F("    | "));
+    
+    // Wheel Speed
+    Serial.print(getWheelSpeed(i), 3);
+    Serial.print(F(" | "));
+    
+    // LFO Depth
+    Serial.print(getLfoDepth(i), 1);
+    Serial.print(F("% | "));
+    
+    // LFO Rate
+    Serial.print(getLfoRate(i), 2);
+    Serial.print(F(" | "));
+    
+    // LFO Polarity
+    Serial.print(getLfoPolarity(i) ? F("Bipolar ") : F("Unipolar"));
+    Serial.print(F(" | "));
+    
+    // Actual Speed
+    Serial.print(getCurrentActualSpeed(i), 1);
+    
+    Serial.println();
   }
 } 

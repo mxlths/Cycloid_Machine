@@ -20,8 +20,6 @@
 const byte NUM_MAIN_OPTIONS = 6; // SPEED, LFO, RATIO, MASTER, MICROSTEP, RESET
 const byte NUM_LFO_PARAMS_PER_WHEEL = 3; // Depth, Rate, Polarity
 const byte NUM_LFO_PARAMS_TOTAL = MOTORS_COUNT * NUM_LFO_PARAMS_PER_WHEEL;
-const byte NUM_RATIO_PRESETS = 4;
-const byte NUM_VALID_MICROSTEPS = 8;
 
 // --- Menu State Variables ---
 static MenuState currentMenu = MENU_MAIN;
@@ -43,7 +41,7 @@ static bool ratioChoice = false; // false=NO, true=YES for ratio preset confirma
 static bool resetChoice = false; // false=NO, true=YES for reset confirmation
 
 // Pause state
-static bool systemPaused = false;
+static bool systemPaused = true;  // Start paused
 
 // Variables for microstepping menu
 const byte validMicrosteps[] = {1, 2, 4, 8, 16, 32, 64, 128};
@@ -123,14 +121,14 @@ void updateDisplay() {
 // --- Forward Declarations for Static Functions ---
 static void enterSubmenu(MenuState menu);
 static void returnToMainMenu();
-static void displayPaused(char* line1, char* line2);
-static void displayMainMenu(char* line1, char* line2);
-static void displaySpeedMenu(char* line1, char* line2);
-static void displayLfoMenu(char* line1, char* line2);
-static void displayRatioMenu(char* line1, char* line2);
-static void displayMasterMenu(char* line1, char* line2);
-static void displayMicrostepMenu(char* line1, char* line2);
-static void displayResetMenu(char* line1, char* line2);
+static void displayPausedStatic(char* line1, char* line2);
+static void displayMainMenuStatic(char* line1, char* line2);
+static void displaySpeedMenuStatic(char* line1, char* line2);
+static void displayLfoMenuStatic(char* line1, char* line2);
+static void displayRatioMenuStatic(char* line1, char* line2);
+static void displayMasterMenuStatic(char* line1, char* line2);
+static void displayMicrostepMenuStatic(char* line1, char* line2);
+static void displayResetMenuStatic(char* line1, char* line2);
 static void applyRatioPresetInternal(byte presetIndex);
 static void resetToDefaultsInternal();
 
@@ -469,7 +467,7 @@ void setSystemPaused(bool pause) {
  * @param line1 Buffer for the first line of display
  * @param line2 Buffer for the second line of display
  */
-static void displayPaused(char* line1, char* line2) {
+static void displayPausedStatic(char* line1, char* line2) {
   strcpy(line1, "** SYSTEM **");
   strcpy(line2, "*** PAUSED ***");
 }
@@ -479,7 +477,7 @@ static void displayPaused(char* line1, char* line2) {
  * @param line1 Buffer for the first line of display
  * @param line2 Buffer for the second line of display
  */
-static void displayMainMenu(char* line1, char* line2) {
+static void displayMainMenuStatic(char* line1, char* line2) {
   // Simple sliding window display for main menu
   const char* options[] = {"SPEED", "LFO", "RATIO", "MASTER", "STEP", "RESET"};
   byte prev = (selectedMainMenuOption + NUM_MAIN_OPTIONS - 1) % NUM_MAIN_OPTIONS;
@@ -493,7 +491,7 @@ static void displayMainMenu(char* line1, char* line2) {
  * @param line1 Buffer for the first line of display
  * @param line2 Buffer for the second line of display
  */
-static void displaySpeedMenu(char* line1, char* line2) {
+static void displaySpeedMenuStatic(char* line1, char* line2) {
   if (editingSpeed) {
     sprintf(line1, "SPEED: %s#", wheelLabels[selectedSpeedWheel]);
   } else {
@@ -508,7 +506,7 @@ static void displaySpeedMenu(char* line1, char* line2) {
  * @param line1 Buffer for the first line of display
  * @param line2 Buffer for the second line of display
  */
-static void displayLfoMenu(char* line1, char* line2) {
+static void displayLfoMenuStatic(char* line1, char* line2) {
   byte wheelIndex = selectedLfoParam / NUM_LFO_PARAMS_PER_WHEEL;
   byte paramType = selectedLfoParam % NUM_LFO_PARAMS_PER_WHEEL;
   const char* paramName = "";
@@ -554,7 +552,7 @@ static void displayLfoMenu(char* line1, char* line2) {
  * @param line1 Buffer for the first line of display
  * @param line2 Buffer for the second line of display
  */
-static void displayRatioMenu(char* line1, char* line2) {
+static void displayRatioMenuStatic(char* line1, char* line2) {
   if (confirmingRatio) {
     strcpy(line1, "Apply Preset?");
     
@@ -590,7 +588,7 @@ static void displayRatioMenu(char* line1, char* line2) {
  * @param line1 Buffer for the first line of display
  * @param line2 Buffer for the second line of display
  */
-static void displayMasterMenu(char* line1, char* line2) {
+static void displayMasterMenuStatic(char* line1, char* line2) {
   if (editingMaster) {
     strcpy(line1, "MASTER TIME:#");
   } else {
@@ -605,7 +603,7 @@ static void displayMasterMenu(char* line1, char* line2) {
  * @param line1 Buffer for the first line of display
  * @param line2 Buffer for the second line of display
  */
-static void displayMicrostepMenu(char* line1, char* line2) {
+static void displayMicrostepMenuStatic(char* line1, char* line2) {
   if (editingMicrostep) {
     strcpy(line1, "MICROSTEP:#");
     // When editing, show the pending value that hasn't been applied yet
@@ -622,7 +620,7 @@ static void displayMicrostepMenu(char* line1, char* line2) {
  * @param line1 Buffer for the first line of display
  * @param line2 Buffer for the second line of display
  */
-static void displayResetMenu(char* line1, char* line2) {
+static void displayResetMenuStatic(char* line1, char* line2) {
   if (confirmingReset) {
     strcpy(line1, "RESET TO DEFLT?");
     if (resetChoice) {
@@ -674,4 +672,42 @@ static void resetToDefaultsInternal() {
     confirmingRatio = false;
     confirmingReset = false;
     systemPaused = false; // Ensure system is not paused after reset
+}
+
+// --- Non-static implementations that call the static versions ---
+
+void displayPaused(char* line1, char* line2) {
+  displayPausedStatic(line1, line2);
+}
+
+void displayMainMenu(char* line1, char* line2) {
+  displayMainMenuStatic(line1, line2);
+}
+
+void displaySpeedMenu(char* line1, char* line2) {
+  displaySpeedMenuStatic(line1, line2);
+}
+
+void displayLfoMenu(char* line1, char* line2) {
+  displayLfoMenuStatic(line1, line2);
+}
+
+void displayRatioMenu(char* line1, char* line2) {
+  displayRatioMenuStatic(line1, line2);
+}
+
+void displayMasterMenu(char* line1, char* line2) {
+  displayMasterMenuStatic(line1, line2);
+}
+
+void displayMicrostepMenu(char* line1, char* line2) {
+  displayMicrostepMenuStatic(line1, line2);
+}
+
+void displayResetMenu(char* line1, char* line2) {
+  displayResetMenuStatic(line1, line2);
+}
+
+void applyRatioPreset(byte presetIndex) {
+  applyRatioPresetInternal(presetIndex);
 } 
