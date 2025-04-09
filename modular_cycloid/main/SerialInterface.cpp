@@ -73,7 +73,7 @@ void executeCommand(char* command) {
   }
   // Reset command
   if (strcmp(command, "reset") == 0) {
-    MotorControl::resetToDefaults(); // Call MotorControl public reset
+    resetToDefaults(); // Call MotorControl public reset (Removed MotorControl::)
     // Menu state is reset internally if needed via MotorControl calls
     Serial.println(F("All motor settings reset to defaults via Serial"));
     return;
@@ -149,7 +149,10 @@ void executeCommand(char* command) {
           setWheelSpeed(i, RATIO_PRESETS[presetIndex][i]);
       }
     } else {
-      Serial.println(F("Error: Invalid preset number (1-") + String(NUM_RATIO_PRESETS) + F(")"));
+      // Split Serial.println for F() string and String()
+      Serial.print(F("Error: Invalid preset number (1-"));
+      Serial.print(NUM_RATIO_PRESETS);
+      Serial.println(F(")"));
     }
     return;
   }
@@ -175,7 +178,10 @@ void printHelp() {
   Serial.println(F("rate<n>=<value>          - Set LFO rate 0-10Hz (n=1-4, e.g., rate3=2.5)"));
   Serial.println(F("polarity<n>=<0/1>        - Set LFO polarity: 0=uni, 1=bi (n=1-4, e.g., polarity4=1)"));
   Serial.println(F("microstep=<value>        - Set microstepping (1,2,4,8,16,32,64,128)"));
-  Serial.println(F("preset=<value>           - Apply ratio preset (1-") + String(NUM_RATIO_PRESETS) + F(")"));
+  // Split Serial.println for F() string and String()
+  Serial.print(F("preset=<value>           - Apply ratio preset (1-"));
+  Serial.print(NUM_RATIO_PRESETS);
+  Serial.println(F(")"));
 }
 
 // Print system status
