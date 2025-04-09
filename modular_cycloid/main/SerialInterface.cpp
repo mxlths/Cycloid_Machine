@@ -187,23 +187,59 @@ void printHelp() {
 // Print system status
 void printSystemStatus() {
   Serial.println(F("\n--- System Status ---"));
-  Serial.print(F("System state: ")); Serial.println(getSystemPaused() ? F("PAUSED") : F("RUNNING"));
-  Serial.print(F("Master time: ")); Serial.println(getMasterTime());
-  Serial.print(F("Microstepping: ")); Serial.println(getCurrentMicrostepMode());
+  bool paused = getSystemPaused(); // Get pause state
+  Serial.print(F("System state: ")); Serial.println(paused ? F("PAUSED") : F("RUNNING"));
+  float masterT = getMasterTime(); // Get master time
+  Serial.print(F("Master time: ")); Serial.print(masterT); Serial.println(F(" ms"));
+  byte microstep = getCurrentMicrostepMode(); // Get microstep mode
+  Serial.print(F("Microstepping: ")); Serial.print(microstep); Serial.println(F("x"));
   
   Serial.println(F("\n--- Wheel Settings ---"));
   Serial.println(F("Wheel | Ratio | LFO Dep | LFO Rate | LFO Pol | Actual Speed (Steps/s)"));
   Serial.println(F("------|-------|---------|----------|---------|------------------------"));
   
-  char buffer[100];
   for (byte i = 0; i < MOTORS_COUNT; i++) {
-    sprintf(buffer, " %-4d | %-5.2f | %-7.1f | %-8.2f | %-7s | %.2f",
-            i + 1,
-            getWheelSpeed(i),
-            getLfoDepth(i),
-            getLfoRate(i),
-            getLfoPolarity(i) ? "Bipolar" : "Unipolar",
-            getCurrentActualSpeed(i)); // Get speed in steps/sec
-    Serial.println(buffer);
+    // --- Get raw values for debugging ---
+    float rawWheelSpeed = getWheelSpeed(i);
+    float rawLfoDepth = getLfoDepth(i);
+    float rawLfoRate = getLfoRate(i);
+    bool rawLfoPolarity = getLfoPolarity(i);
+    float rawActualSpeed = getCurrentActualSpeed(i);
+    
+    // --- Print raw values (temporary debug) ---
+    Serial.print(F("DBG M")); Serial.print(i); 
+    Serial.print(F(": Spd=")); Serial.print(rawWheelSpeed); 
+    Serial.print(F(" Dpt=")); Serial.print(rawLfoDepth); 
+    Serial.print(F(" Rte=")); Serial.print(rawLfoRate); 
+    Serial.print(F(" Pol=")); Serial.print(rawLfoPolarity); 
+    Serial.print(F(" ActSpd=")); Serial.println(rawActualSpeed);
+    // --- End temporary debug ---
+
+    // --- Original formatted print ---
+    Serial.print(F(" ")); 
+    Serial.print(i + 1); 
+    Serial.print(F("    | "));
+    
+    // Wheel Speed
+    Serial.print(rawWheelSpeed, 3); // Use the raw value we got
+    Serial.print(F(" | "));
+    
+    // LFO Depth
+    Serial.print(rawLfoDepth, 1); // Use the raw value we got
+    Serial.print(F("% | "));
+    
+    // LFO Rate
+    Serial.print(rawLfoRate, 2); // Use the raw value we got
+    Serial.print(F(" | "));
+    
+    // LFO Polarity
+    Serial.print(rawLfoPolarity ? F("Bipolar ") : F("Unipolar"));
+    Serial.print(F(" | "));
+    
+    // Actual Speed
+    Serial.print(rawActualSpeed, 1); // Use the raw value we got
+    
+    Serial.println();
+    // --- End original formatted print ---
   }
 } 
