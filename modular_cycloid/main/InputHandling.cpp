@@ -8,10 +8,11 @@
 #include "MenuSystem.h"
 
 // --- Internal State Variables (moved from Config.h) ---
-static volatile int encoderPos = 0;
-static volatile int lastEncoded = 0;
-static volatile long lastEncoderTime = 0;
-static volatile bool encoderChanged = false; // Flag to indicate encoder changed
+static int encoderPos = 0;
+static int lastEncoded = 0;
+static int MSBPrev = 0;
+static int LSBPrev = 0;
+static unsigned long lastEncoderTime = 0;
 
 static volatile bool buttonPressed = false;
 static volatile bool buttonLongPressed = false;
@@ -21,7 +22,6 @@ static volatile bool lastButtonState = true;
 static volatile unsigned long lastButtonDebounceTime = 0;
 
 // --- Forward Declarations for Static Functions ---
-static void updateEncoderPosition();
 static void handleShortPress();
 static void handleLongPress();
 
@@ -32,63 +32,54 @@ void setupEncoder() {
   pinMode(ENC_BTN_PIN, INPUT_PULLUP);
   
   // Initial encoder state
-  lastEncoded = (digitalRead(ENC_A_PIN) << 1) | digitalRead(ENC_B_PIN);
+  MSBPrev = digitalRead(ENC_A_PIN);
+  LSBPrev = digitalRead(ENC_B_PIN);
+  lastEncoded = (MSBPrev << 1) | LSBPrev;
   
-  // Set up interrupts
-  attachInterrupt(digitalPinToInterrupt(ENC_A_PIN), updateEncoderPosition, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENC_B_PIN), updateEncoderPosition, CHANGE);
+  // No interrupts needed for polling-based approach
 }
 
-// Encoder position update (interrupt-driven)
-static void updateEncoderPosition() {
-  // Simple debounce
-  long time = micros();
-  if (time - lastEncoderTime < 1000) return;  // Ignore changes within 1ms
-  lastEncoderTime = time;
+// Process encoder changes by polling (called from main loop)
+void processEncoderChanges() {
+  // Get current time
+  unsigned long currentTime = micros();
   
-  // Read encoder pins
+  // Only check encoder at suitable intervals (debounce)
+  if (currentTime - lastEncoderTime < 1000) return;
+  
+  // Read current encoder state
   int MSB = digitalRead(ENC_A_PIN);
   int LSB = digitalRead(ENC_B_PIN);
   
-  // Convert the readings to a single number
-  int encoded = (MSB << 1) | LSB;
-  
-  // Compare with previous reading to determine direction
-  int sum = (lastEncoded << 2) | encoded;
-  
-  // Lookup table for direction: 0=no change, 1=CW, -1=CCW
-  static const int lookup_table[] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0};
-  int change = lookup_table[sum & 0x0F];
-  
-  // Apply the change to our position
-  if (change != 0) {
-    encoderPos += change;
-    encoderChanged = true; // Set flag rather than processing immediately
-  }
-  
-  // Save current state
-  lastEncoded = encoded;
-}
-
-// Process any pending encoder changes from the main loop
-void processEncoderChanges() {
-  if (encoderChanged) {
-    // Get the current position and reset it
-    noInterrupts();
-    int currentPos = encoderPos;
-    encoderPos = 0;
-    encoderChanged = false;
-    interrupts();
+  // Check if anything changed
+  if (MSB != MSBPrev || LSB != LSBPrev) {
+    // Convert the readings to a single number
+    int encoded = (MSB << 1) | LSB;
     
-    // Process the change in the main loop context (safer than in ISR)
-    if (currentPos != 0) {
+    // Compare with previous reading to determine direction
+    int sum = (lastEncoded << 2) | encoded;
+    
+    // Lookup table for direction: 0=no change, 1=CW, -1=CCW
+    static const int lookup_table[] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0};
+    int change = lookup_table[sum & 0x0F];
+    
+    // Apply the change to our position
+    if (change != 0) {
+      encoderPos += change;
+      
       // Debug output
       Serial.print(F("Encoder: "));
-      Serial.println(currentPos);
+      Serial.println(change);
       
       // Forward to the menu system to handle
-      handleMenuNavigation(currentPos);
+      handleMenuNavigation(change);
     }
+    
+    // Save current state
+    lastEncoded = encoded;
+    MSBPrev = MSB;
+    LSBPrev = LSB;
+    lastEncoderTime = currentTime;
   }
 }
 

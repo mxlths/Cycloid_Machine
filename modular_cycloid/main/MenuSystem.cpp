@@ -264,7 +264,7 @@ void handleMenuSelection() {
 // Handle long button press for return/pause (called by InputHandling)
 void handleMenuReturn() { 
   if (currentMenu == MENU_MAIN) {
-    // Toggle pause directly using the internal static variable
+    // Toggle pause only when in the main menu
     systemPaused = !systemPaused; 
     if (systemPaused) {
       stopAllMotors(); // Call MotorControl function
@@ -275,14 +275,15 @@ void handleMenuReturn() {
     // Update display immediately after state change
     updateDisplay(); 
   } else if (editingSpeed || editingLfo || editingMaster) {
-     // REPLACE placeholder: If editing a value, long press just exits edit mode
+     // If editing a value, long press just exits edit mode
+     // without changing pause state or returning to main menu
      editingSpeed = false;
      editingLfo = false;
      editingMaster = false;
      Serial.println(F("Exited edit mode")); // Optional feedback
      updateDisplay(); // Update display to remove edit indicator '#'
   } else if (currentMenu == MENU_MICROSTEP) {
-    // REPLACE placeholder: If editing, apply the pending change. If not editing, return.
+    // If editing, apply the pending change. If not editing, return to main menu
     if (editingMicrostep) {
         if (updateMicrostepMode(pendingMicrostepMode)) {
             Serial.print(F("Microstepping updated to "));
@@ -304,16 +305,17 @@ void handleMenuReturn() {
         updateDisplay(); // Update display to show applied value without '#'
     } else {
          returnToMainMenu(); // Not editing, long press returns to main menu
-         // updateDisplay is called within returnToMainMenu
+         // DON'T toggle pause state - updateDisplay is called within returnToMainMenu
     }
   } else if (confirmingRatio || confirmingReset) {
       // If confirming something, long press cancels and returns to main menu
       confirmingRatio = false;
       confirmingReset = false;
       returnToMainMenu();
-      // updateDisplay is called within returnToMainMenu
+      // DON'T toggle pause state - updateDisplay is called within returnToMainMenu
   } else {
     // Default behavior: Return to main menu from any other submenu/state
+    // WITHOUT changing pause state
     returnToMainMenu();
     // updateDisplay is called within returnToMainMenu
   }
