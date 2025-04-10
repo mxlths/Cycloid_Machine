@@ -74,6 +74,7 @@ void loop() {
   processSerialCommands();
   
   // Check and handle encoder/button inputs (updates menu state)
+  processEncoderChanges();
   checkButtonPress();
   
   // Get current system paused state from MenuSystem

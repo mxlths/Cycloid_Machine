@@ -11,6 +11,7 @@
 static volatile int encoderPos = 0;
 static volatile int lastEncoded = 0;
 static volatile long lastEncoderTime = 0;
+static volatile bool encoderChanged = false; // Flag to indicate encoder changed
 
 static volatile bool buttonPressed = false;
 static volatile bool buttonLongPressed = false;
@@ -21,7 +22,6 @@ static volatile unsigned long lastButtonDebounceTime = 0;
 
 // --- Forward Declarations for Static Functions ---
 static void updateEncoderPosition();
-static void processEncoderChange(int change);
 static void handleShortPress();
 static void handleLongPress();
 
@@ -63,17 +63,33 @@ static void updateEncoderPosition() {
   // Apply the change to our position
   if (change != 0) {
     encoderPos += change;
-    processEncoderChange(change);
+    encoderChanged = true; // Set flag rather than processing immediately
   }
   
   // Save current state
   lastEncoded = encoded;
 }
 
-// Process encoder changes
-static void processEncoderChange(int change) {
-  // Forward to the menu system to handle
-  handleMenuNavigation(change);
+// Process any pending encoder changes from the main loop
+void processEncoderChanges() {
+  if (encoderChanged) {
+    // Get the current position and reset it
+    noInterrupts();
+    int currentPos = encoderPos;
+    encoderPos = 0;
+    encoderChanged = false;
+    interrupts();
+    
+    // Process the change in the main loop context (safer than in ISR)
+    if (currentPos != 0) {
+      // Debug output
+      Serial.print(F("Encoder: "));
+      Serial.println(currentPos);
+      
+      // Forward to the menu system to handle
+      handleMenuNavigation(currentPos);
+    }
+  }
 }
 
 // Check for button presses (regularly called from loop)
@@ -126,12 +142,18 @@ void checkButtonPress() {
 
 // Handle short button press
 static void handleShortPress() {
+  // Debug output
+  Serial.println(F("Button: Short Press"));
+  
   // Forward to menu system to handle
   handleMenuSelection();
 }
 
 // Handle long button press
 static void handleLongPress() {
+  // Debug output
+  Serial.println(F("Button: Long Press"));
+  
   // Forward to menu system to handle
   handleMenuReturn();
 } 

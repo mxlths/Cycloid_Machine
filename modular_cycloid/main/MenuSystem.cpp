@@ -683,19 +683,18 @@ static void enterSubmenu(MenuState menu) {
   updateDisplay();
 }
 
-/**
- * Return to the main menu, resetting all submenu states
- */
+// Return to main menu (helper function)
 static void returnToMainMenu() {
   currentMenu = MENU_MAIN;
+  // Reset all editing states
   editingSpeed = false;
   editingLfo = false;
   editingMaster = false;
-  editingMicrostep = false; // Added Microstep reset
+  editingMicrostep = false;
   confirmingRatio = false;
   confirmingReset = false;
-  resetChoice = false; // Added resetChoice reset
-  ratioChoice = false; // Added ratioChoice reset
-  
+  resetChoice = false;
+  ratioChoice = false;
+  // Do NOT toggle pause state when returning to main menu
   updateDisplay();
 } 

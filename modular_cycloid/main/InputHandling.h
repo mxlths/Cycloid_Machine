@@ -12,6 +12,7 @@
 // Encoder setup and input detection
 void setupEncoder();
 // void updateEncoderPosition(); // This is often an ISR, keep it internal/static
+void processEncoderChanges(); // New function to be called from loop
 void checkButtonPress(); // Called from loop, keep public
 
 // The following are primarily internal logic or forwarders, can be removed from public header
