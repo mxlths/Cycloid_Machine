@@ -1,0 +1,10 @@
+- Pi Zero 2 W serial control
+- Web interface for Zero 2 W interfaced to serial control
+    Flask/Django web server
+    WebSocket for real-time updates
+    SD card for storing presets/configurations
+    Touch display using PyGame or Kivy
+- Consider commoning of grounds between Pi Zero and Arduino. Ensure only 1 ground connection is commoned to avoid ground loops / circulating currents.
+- SD card on Pi for saving and recalling machine states
+- LCD screen maybe?
+- Free up processes on arduino for pure motor control, handle all input via Pi

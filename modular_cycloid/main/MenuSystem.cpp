@@ -53,6 +53,10 @@ const byte validMicrosteps[] = {1, 2, 4, 8, 16, 32, 64, 128};
 const byte microstepCount = 8;
 byte currentMicrostepIndex = 0; // Index in validMicrosteps array
 
+// Add a throttling variable for LCD updates
+static unsigned long lastDisplayUpdateTime = 0;
+const unsigned long MIN_DISPLAY_UPDATE_INTERVAL = 100; // Minimum 100ms between display updates
+
 // Initialize the LCD
 void setupLCD() {
   Wire.begin();
@@ -91,8 +95,15 @@ static void applyRatioPreset(byte presetIndex);
 static void enterSubmenu(MenuState menu);
 static void returnToMainMenu();
 
-// Update the LCD display based on current menu and state
+// Update the LCD display based on current menu and state - now with throttling
 void updateDisplay() {
+  // Check if enough time has passed since the last update
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastDisplayUpdateTime < MIN_DISPLAY_UPDATE_INTERVAL) {
+    return; // Skip this update to avoid too frequent refreshes
+  }
+  lastDisplayUpdateTime = currentMillis;
+  
   lcd.clear();
   
   // Format strings for display
@@ -162,8 +173,8 @@ void updateDisplay() {
 
 // Handle menu navigation based on encoder movement
 void handleMenuNavigation(int change) {
-  // Allow encoder operation in the main menu and pause menu even when paused
-  if (systemPaused && currentMenu != MENU_MAIN && currentMenu != MENU_PAUSE) return;
+  // We'll allow encoder input in all menus, regardless of pause state
+  // This makes the menu system more responsive and intuitive
   
   switch (currentMenu) {
     case MENU_MAIN:
@@ -205,7 +216,8 @@ void handleMenuNavigation(int change) {
 
 // Handle short button press for menu selection
 void handleMenuSelection() {
-  if (systemPaused && currentMenu != MENU_MAIN && currentMenu != MENU_PAUSE) return;
+  // Allow button operations in all menus, regardless of pause state
+  // This makes the menu system more responsive and intuitive
   
   switch (currentMenu) {
     case MENU_MAIN:
@@ -247,7 +259,39 @@ void handleMenuSelection() {
       
     case MENU_MICROSTEP:
       // Toggle editing mode
-      editingMicrostep = !editingMicrostep;
+      if (editingMicrostep) {
+        // If we're exiting edit mode, apply the pending change
+        if (updateMicrostepMode(pendingMicrostepMode)) {
+          // Keep this message as it's important user feedback
+          Serial.print(F("Microstepping updated to "));
+          Serial.print(pendingMicrostepMode);
+          Serial.println(F("x"));
+        } else {
+          // Keep error message
+          Serial.println(F("Microstepping update failed!"));
+          // Revert the pending value to the current value
+          pendingMicrostepMode = getCurrentMicrostepMode();
+          // Update index to match
+          for (byte i = 0; i < NUM_VALID_MICROSTEPS; i++) {
+            if (validMicrosteps[i] == pendingMicrostepMode) {
+              currentMicrostepIndex = i;
+              break;
+            }
+          }
+        }
+        editingMicrostep = false;
+      } else {
+        // Entering edit mode - ensure the pending value matches the current value
+        pendingMicrostepMode = getCurrentMicrostepMode();
+        // Find the corresponding index
+        for (byte i = 0; i < NUM_VALID_MICROSTEPS; i++) {
+          if (validMicrosteps[i] == pendingMicrostepMode) {
+            currentMicrostepIndex = i;
+            break;
+          }
+        }
+        editingMicrostep = true;
+      }
       break;
       
     case MENU_RESET:
@@ -269,11 +313,11 @@ void handleMenuSelection() {
       if (selectedPauseOption == 0) {  // ON selected
         systemPaused = true;
         stopAllMotors(); // Call MotorControl function
-        Serial.println(F("System Paused (Menu)"));
+        Serial.println(F("System Paused (Menu)")); // Keep this as it's user feedback
         returnToMainMenu();
       } else if (selectedPauseOption == 1) {  // OFF selected
         systemPaused = false;
-        Serial.println(F("System Resumed (Menu)"));
+        Serial.println(F("System Resumed (Menu)")); // Keep this as it's user feedback
         returnToMainMenu();
       } else {  // EXIT selected
         returnToMainMenu();
@@ -286,21 +330,14 @@ void handleMenuSelection() {
 
 // Handle long button press for return/pause (called by InputHandling)
 void handleMenuReturn() { 
-  // We're moving away from using long press for navigation,
-  // but keeping basic functionality for backward compatibility
+  // We're completely removing the pause toggling functionality from long press
+  // since we now have a dedicated PAUSE menu
   
   if (currentMenu == MENU_MAIN) {
-    // Toggle pause only when in the main menu - consider removing this in the future
-    // when the pause menu is fully integrated
-    systemPaused = !systemPaused; 
-    if (systemPaused) {
-      stopAllMotors(); // Call MotorControl function
-      Serial.println(F("System Paused (Long Press)")); // Add feedback
-    } else {
-      Serial.println(F("System Resumed (Long Press)")); // Add feedback
-    }
-    // Update display immediately after state change
-    updateDisplay(); 
+    // No longer toggle pause on long press in main menu
+    // Just provide feedback that this behavior is deprecated
+    Serial.println(F("Long press in main menu: Use PAUSE menu instead"));
+    updateDisplay();
   } else {
     // For all other menus, just return to the main menu
     // This will be replaced by explicit EXIT options in the future
@@ -311,10 +348,19 @@ void handleMenuReturn() {
 // Handle SPEED menu navigation
 static void handleSpeedMenu(int change) {
   if (editingSpeed) {
-    // REPLACE direct access with getter/setter
+    // Get current value, modify it, and set it back
     float currentSpeed = getWheelSpeed(selectedSpeedWheel);
-    setWheelSpeed(selectedSpeedWheel, currentSpeed + change * 0.1); 
-    // Constraints are handled by the setter
+    
+    // Calculate step size based on change magnitude
+    float stepSize = 0.1;
+    if (abs(change) > 1) {
+      // Use a more aggressive non-linear scaling for larger changes
+      stepSize = 0.1 * pow(abs(change), 0.7); // More aggressive than sqrt (which is pow(x, 0.5))
+    }
+    
+    // Apply the change with appropriate step size
+    float newSpeed = currentSpeed + (change > 0 ? stepSize : -stepSize);
+    setWheelSpeed(selectedSpeedWheel, newSpeed);
   } else {
     // Cycle through wheels
     selectedSpeedWheel = (selectedSpeedWheel + MOTORS_COUNT + change) % MOTORS_COUNT;
@@ -327,28 +373,78 @@ static void handleLfoMenu(int change) {
     byte wheelIndex = selectedLfoParam / NUM_LFO_PARAMS_PER_WHEEL;
     byte paramType = selectedLfoParam % NUM_LFO_PARAMS_PER_WHEEL;
     
+    // Make sure we're in valid range
+    if (wheelIndex >= MOTORS_COUNT) {
+      wheelIndex = 0;
+      selectedLfoParam = 0;
+      paramType = 0;
+    }
+    
     if (paramType == 0) {  // Depth (0-100%)
-      // REPLACE direct access with getter/setter
       float currentDepth = getLfoDepth(wheelIndex);
-      setLfoDepth(wheelIndex, currentDepth + change * 0.1);
-      // Constraints are handled by the setter
+      
+      // Calculate step size based on change magnitude
+      float stepSize = 0.1;
+      if (abs(change) > 1) {
+        // Use a more aggressive scaling for larger changes
+        stepSize = 0.1 * pow(abs(change), 0.7);
+        
+        // For larger values, make bigger steps
+        if (currentDepth > 50) {
+          stepSize *= 1.5; // Faster adjustment for higher values
+        }
+      }
+      
+      // Apply the change with appropriate step size
+      float newDepth = currentDepth + (change > 0 ? stepSize : -stepSize);
+      setLfoDepth(wheelIndex, newDepth);
     }
-    else if (paramType == 1) {  // Rate (0-256.0)
-      // REPLACE direct access with getter/setter
+    else if (paramType == 1) {  // Rate (0-10.0)
       float currentRate = getLfoRate(wheelIndex);
-      setLfoRate(wheelIndex, currentRate + change * 0.1);
-      // Constraints are handled by the setter
+      
+      // Calculate step size based on change magnitude
+      float stepSize = 0.1;
+      if (abs(change) > 1) {
+        // Use a more aggressive scaling for larger changes
+        stepSize = 0.1 * pow(abs(change), 0.7);
+        
+        // For larger values, make bigger steps
+        if (currentRate > 5) {
+          stepSize *= 1.5; // Faster adjustment for higher values
+        }
+      }
+      
+      // Apply the change with appropriate step size
+      float newRate = currentRate + (change > 0 ? stepSize : -stepSize);
+      setLfoRate(wheelIndex, newRate);
     }
-    else {  // Polarity (toggle UNI/BI)
-      // REPLACE direct access with getter/setter
+    else if (paramType == 2) {  // Polarity (toggle UNI/BI)
       if (change != 0) { 
-          bool currentPolarity = getLfoPolarity(wheelIndex);
-          setLfoPolarity(wheelIndex, !currentPolarity);
+        bool currentPolarity = getLfoPolarity(wheelIndex);
+        bool newPolarity = !currentPolarity;
+        setLfoPolarity(wheelIndex, newPolarity);
       }
     }
   } else {
-    // Cycle through LFO parameters 
-    selectedLfoParam = (selectedLfoParam + NUM_LFO_PARAMS_TOTAL + change) % NUM_LFO_PARAMS_TOTAL;
+    // Cycle through LFO parameters, ensuring we stay within valid range
+    int maxParams = MOTORS_COUNT * NUM_LFO_PARAMS_PER_WHEEL;
+    
+    // Calculate new parameter value with wrapping
+    int newParam = selectedLfoParam + change;
+    
+    // Apply modulp operation with correct handling of negative numbers
+    newParam = ((newParam % maxParams) + maxParams) % maxParams;
+    selectedLfoParam = (byte)newParam;
+    
+    // Verify we're in valid range
+    byte wheelIndex = selectedLfoParam / NUM_LFO_PARAMS_PER_WHEEL;
+    byte paramType = selectedLfoParam % NUM_LFO_PARAMS_PER_WHEEL;
+    
+    if (wheelIndex >= MOTORS_COUNT) {
+      selectedLfoParam = 0;
+      wheelIndex = 0;
+      paramType = 0;
+    }
   }
 }
 
@@ -366,10 +462,23 @@ static void handleRatioMenu(int change) {
 // Handle MASTER menu navigation
 static void handleMasterMenu(int change) {
   if (editingMaster) {
-    // REPLACE direct access with getter/setter
     float currentTime = getMasterTime();
-    setMasterTime(currentTime + change * 0.01);
-    // Constraints are handled by the setter
+    
+    // Calculate step size based on change magnitude and current value
+    float stepSize = 10.0; // Base step size in ms
+    if (abs(change) > 1) {
+      // More aggressive scaling for larger changes
+      stepSize = 10.0 * pow(abs(change), 0.8);
+      
+      // For larger values, make even bigger steps
+      if (currentTime > 1000) {
+        stepSize *= 3.0; // Increased from 2.0 for faster adjustment
+      }
+    }
+    
+    // Apply the change with appropriate step size
+    float newTime = currentTime + (change > 0 ? stepSize : -stepSize);
+    setMasterTime(newTime);
   }
   // No cycling needed if not editing
 }
@@ -377,17 +486,21 @@ static void handleMasterMenu(int change) {
 // Handle MICROSTEP menu navigation
 static void handleMicrostepMenu(int change) {
   if (editingMicrostep) {
-    // Adjust the index based on encoder change (this part is fine)
-    if (change > 0) {
-      currentMicrostepIndex = (currentMicrostepIndex + 1) % NUM_VALID_MICROSTEPS;
-    } else if (change < 0) {
-      currentMicrostepIndex = (currentMicrostepIndex + NUM_VALID_MICROSTEPS - 1) % NUM_VALID_MICROSTEPS;
-    }
-    
-    // Update the PENDING microstepping mode from the index
-    // REMOVE direct write to currentMicrostepMode
-    if (change != 0) { // Only update pending mode if index actually changed
-       pendingMicrostepMode = validMicrosteps[currentMicrostepIndex];
+    // Only process change if it's non-zero
+    if (change != 0) {
+      // Adjust the index based on encoder change
+      if (change > 0) {
+        currentMicrostepIndex = (currentMicrostepIndex + 1) % NUM_VALID_MICROSTEPS;
+      } else if (change < 0) {
+        currentMicrostepIndex = (currentMicrostepIndex + NUM_VALID_MICROSTEPS - 1) % NUM_VALID_MICROSTEPS;
+      }
+      
+      // Update the PENDING microstepping mode from the index
+      pendingMicrostepMode = validMicrosteps[currentMicrostepIndex];
+      
+      // Remove debug output
+      // Serial.print(F("Selected microstep mode: "));
+      // Serial.println(pendingMicrostepMode);
     }
   }
    // No cycling needed if not editing
@@ -488,8 +601,12 @@ static void displaySpeedMenu(char* line1, char* line2) {
   } else {
     sprintf(line1, "SPEED: %s", wheelLabels[selectedSpeedWheel]);
   }
+  
   // Use getter instead of direct access
-  sprintf(line2, "Value: %05.1f", getWheelSpeed(selectedSpeedWheel));
+  float speed = getWheelSpeed(selectedSpeedWheel);
+  char speedStr[7]; // Buffer for speed display
+  dtostrf(speed, 5, 1, speedStr); // Convert float to string with 1 decimal place
+  sprintf(line2, "Value: %s", speedStr);
 }
 
 /**
@@ -498,44 +615,63 @@ static void displaySpeedMenu(char* line1, char* line2) {
  * @param line2 Buffer for the second line of display
  */
 static void displayLfoMenu(char* line1, char* line2) {
+  // Calculate wheel index and parameter type
   byte wheelIndex = selectedLfoParam / NUM_LFO_PARAMS_PER_WHEEL;
   byte paramType = selectedLfoParam % NUM_LFO_PARAMS_PER_WHEEL;
-  const char* paramName = "";
   
+  // Bounds check to prevent display issues
+  if (wheelIndex >= MOTORS_COUNT) {
+    wheelIndex = 0;
+    selectedLfoParam = 0;
+  }
+  
+  // Make sure we have valid parameter values
+  const char* paramNames[] = {"DPT", "RTE", "POL"};
+  const char* paramName = (paramType < 3) ? paramNames[paramType] : "ERR";
+  
+  // Clear buffers first to prevent garbage
+  memset(line1, 0, LCD_COLS + 1);
+  memset(line2, 0, LCD_COLS + 1);
+  
+  // Format the first line
+  if (editingLfo) {
+    snprintf(line1, LCD_COLS + 1, "LFO: %s %s#", wheelLabels[wheelIndex], paramName);
+  } else {
+    snprintf(line1, LCD_COLS + 1, "LFO: %s %s", wheelLabels[wheelIndex], paramName);
+  }
+  
+  // Format the second line based on parameter type
   switch(paramType) {
     case 0: // Depth
-      paramName = "DPT";
-      if (editingLfo) {
-        sprintf(line1, "LFO: %s %s#", wheelLabels[wheelIndex], paramName);
-      } else {
-        sprintf(line1, "LFO: %s %s", wheelLabels[wheelIndex], paramName);
+      {
+        float depth = getLfoDepth(wheelIndex);
+        char depthStr[7]; // Buffer for depth display
+        dtostrf(depth, 5, 1, depthStr); // Convert float to string with 1 decimal place
+        snprintf(line2, LCD_COLS + 1, "Value: %s%%", depthStr);
       }
-      // Use getter instead of direct access
-      sprintf(line2, "Value: %05.1f%%", getLfoDepth(wheelIndex));
       break;
       
     case 1: // Rate
-      paramName = "RTE";
-      if (editingLfo) {
-        sprintf(line1, "LFO: %s %s#", wheelLabels[wheelIndex], paramName);
-      } else {
-        sprintf(line1, "LFO: %s %s", wheelLabels[wheelIndex], paramName);
+      {
+        float rate = getLfoRate(wheelIndex);
+        char rateStr[7]; // Buffer for rate display
+        dtostrf(rate, 5, 1, rateStr); // Convert float to string with 1 decimal place
+        snprintf(line2, LCD_COLS + 1, "Value: %s", rateStr);
       }
-      // Use getter instead of direct access
-      sprintf(line2, "Value: %05.1f", getLfoRate(wheelIndex));
       break;
       
     case 2: // Polarity
-      paramName = "POL";
-      if (editingLfo) {
-        sprintf(line1, "LFO: %s %s#", wheelLabels[wheelIndex], paramName);
-      } else {
-        sprintf(line1, "LFO: %s %s", wheelLabels[wheelIndex], paramName);
-      }
-      // Use getter instead of direct access
-      sprintf(line2, "Value: %s", getLfoPolarity(wheelIndex) ? "BI" : "UNI");
+      snprintf(line2, LCD_COLS + 1, "Value: %s", getLfoPolarity(wheelIndex) ? "BI" : "UNI");
+      break;
+      
+    default:
+      strcpy(line2, "Value: ERROR");
       break;
   }
+  
+  // Ensure null termination
+  line1[LCD_COLS] = '\0';
+  line2[LCD_COLS] = '\0';
 }
 
 /**
@@ -585,8 +721,12 @@ static void displayMasterMenu(char* line1, char* line2) {
   } else {
     strcpy(line1, "MASTER TIME:");
   }
+  
   // Use getter instead of direct access
-  sprintf(line2, "Value: %06.2f S", getMasterTime());
+  float time = getMasterTime();
+  char timeStr[7]; // Buffer for time display
+  dtostrf(time/1000.0, 5, 2, timeStr); // Convert ms to seconds with 2 decimal places
+  sprintf(line2, "Value: %s S", timeStr);
 }
 
 /**
@@ -635,6 +775,7 @@ static void applyRatioPreset(byte presetIndex) {
       // Use the centralized ratio presets from Config.h
       setWheelSpeed(i, RATIO_PRESETS[presetIndex][i]);
     }
+    // Keep this message as it's important user feedback
     Serial.print(F("Applied ratio preset "));
     Serial.println(presetIndex + 1);
   }
@@ -644,6 +785,7 @@ static void applyRatioPreset(byte presetIndex) {
  * Reset all settings to their default values
  */
 static void resetMenuStateToDefaults() {
+    // Keep this as it's important for diagnostics
     Serial.println(F("Menu: Resetting menu state to defaults..."));
     // Reset motor control settings first
     // resetToDefaults(); // REMOVED Recursive Call - Motor reset is handled elsewhere (e.g., Serial command)

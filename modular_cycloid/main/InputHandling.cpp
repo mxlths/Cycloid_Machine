@@ -13,6 +13,19 @@ static int lastEncoded = 0;
 static int MSBPrev = 0;
 static int LSBPrev = 0;
 static unsigned long lastEncoderTime = 0;
+static unsigned long lastEncoderChangeTime = 0;
+static int lastChange = 0;
+static int accumulatedChange = 0;
+static int stableStateCounter = 0;
+static unsigned long lastActionTime = 0;
+static int consecutiveSteps = 0;
+
+// Enhanced debounce parameters
+#define ENCODER_DEBOUNCE_TIME 5000    // Microseconds between readings
+#define ENCODER_STABLE_TIME 50000     // Microseconds before considering state stable
+#define ENCODER_ACCUMULATION_THRESHOLD 2 // Minimum accumulated changes to register
+#define ACCELERATION_TIMEOUT 400      // ms - if no movement for this time, reset acceleration (reduced for quicker response)
+#define MAX_ACCELERATION 30           // Maximum acceleration multiplier (increased from 15)
 
 static volatile bool buttonPressed = false;
 static volatile bool buttonLongPressed = false;
@@ -44,8 +57,9 @@ void processEncoderChanges() {
   // Get current time
   unsigned long currentTime = micros();
   
-  // Only check encoder at suitable intervals (debounce)
-  if (currentTime - lastEncoderTime < 1000) return;
+  // Only check encoder at suitable intervals (basic debounce)
+  if (currentTime - lastEncoderTime < ENCODER_DEBOUNCE_TIME) return;
+  lastEncoderTime = currentTime;
   
   // Read current encoder state
   int MSB = digitalRead(ENC_A_PIN);
@@ -63,23 +77,83 @@ void processEncoderChanges() {
     static const int lookup_table[] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0};
     int change = lookup_table[sum & 0x0F];
     
-    // Apply the change to our position
+    // Only consider valid state changes (non-zero changes)
     if (change != 0) {
-      encoderPos += change;
-      
-      // Debug output
-      Serial.print(F("Encoder: "));
-      Serial.println(change);
-      
-      // Forward to the menu system to handle
-      handleMenuNavigation(change);
+      // First valid change after a period of stability, or change in same direction
+      if (lastChange == 0 || lastChange == change) {
+        accumulatedChange += change;
+        lastChange = change;
+        lastEncoderChangeTime = currentTime;
+        stableStateCounter = 0;
+      } 
+      // Direction reversal - check if it's valid or a bounce
+      else if (currentTime - lastEncoderChangeTime > ENCODER_STABLE_TIME) {
+        // If enough time has passed, this is likely a real direction change
+        accumulatedChange = change;
+        lastChange = change;
+        lastEncoderChangeTime = currentTime;
+        stableStateCounter = 0;
+      }
+      // Else ignore this as a noise spike (do nothing)
     }
     
     // Save current state
     lastEncoded = encoded;
     MSBPrev = MSB;
     LSBPrev = LSB;
-    lastEncoderTime = currentTime;
+  }
+  
+  // Check if we have a stable reading with accumulated changes
+  stableStateCounter++;
+  
+  // After a certain number of stable readings, if we have accumulated changes, process them
+  if (stableStateCounter >= 3 && accumulatedChange != 0) {
+    // Determine final change direction and magnitude
+    int finalChange = (accumulatedChange > 0) ? 1 : -1;
+    
+    // Only register changes if they exceed the threshold for solid rejection of bounces
+    if (abs(accumulatedChange) >= ENCODER_ACCUMULATION_THRESHOLD) {
+      // Update encoder position
+      encoderPos += finalChange;
+      
+      // Calculate acceleration based on timing
+      unsigned long currentMillis = millis();
+      
+      // Check if this is part of a continuous motion
+      if (currentMillis - lastActionTime < ACCELERATION_TIMEOUT) {
+        // This is a continuous movement, increase acceleration
+        consecutiveSteps++;
+        // Cap the acceleration at a maximum value
+        if (consecutiveSteps > MAX_ACCELERATION) {
+          consecutiveSteps = MAX_ACCELERATION;
+        }
+      } else {
+        // This is a new movement after a pause, reset acceleration
+        consecutiveSteps = 1;
+      }
+      
+      // Save the time of this action
+      lastActionTime = currentMillis;
+      
+      // Apply acceleration to the final change
+      int acceleratedChange = finalChange * consecutiveSteps;
+      
+      // Remove debug output
+      // Serial.print(F("Encoder: "));
+      // Serial.print(finalChange);
+      // Serial.print(F(" Accel: "));
+      // Serial.print(consecutiveSteps);
+      // Serial.print(F(" Final: "));
+      // Serial.println(acceleratedChange);
+      
+      // Forward to the menu system to handle with acceleration
+      handleMenuNavigation(acceleratedChange);
+    }
+    
+    // Reset accumulated change after processing
+    accumulatedChange = 0;
+    lastChange = 0;
+    stableStateCounter = 0;
   }
 }
 
@@ -133,8 +207,8 @@ void checkButtonPress() {
 
 // Handle short button press
 static void handleShortPress() {
-  // Debug output
-  Serial.println(F("Button: Short Press"));
+  // Remove debug output
+  // Serial.println(F("Button: Short Press"));
   
   // Forward to menu system to handle
   handleMenuSelection();
@@ -142,8 +216,8 @@ static void handleShortPress() {
 
 // Handle long button press
 static void handleLongPress() {
-  // Debug output
-  Serial.println(F("Button: Long Press"));
+  // Remove debug output
+  // Serial.println(F("Button: Long Press"));
   
   // Forward to menu system to handle
   handleMenuReturn();
