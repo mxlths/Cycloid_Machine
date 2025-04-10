@@ -20,6 +20,8 @@
 const byte NUM_MAIN_OPTIONS = 6; // SPEED, LFO, RATIO, MASTER, MICROSTEP, RESET
 const byte NUM_LFO_PARAMS_PER_WHEEL = 3; // Depth, Rate, Polarity
 const byte NUM_LFO_PARAMS_TOTAL = MOTORS_COUNT * NUM_LFO_PARAMS_PER_WHEEL;
+const byte NUM_RATIO_PRESETS = 4;
+const byte NUM_VALID_MICROSTEPS = 8;
 
 // --- Menu State Variables ---
 static MenuState currentMenu = MENU_MAIN;
@@ -61,6 +63,28 @@ void setupLCD() {
   
   delay(1000);  // Show startup message
 }
+
+// --- Forward Declarations for Static Functions ---
+// Display Helpers
+static void displayPaused(char* line1, char* line2);
+static void displayMainMenu(char* line1, char* line2);
+static void displaySpeedMenu(char* line1, char* line2);
+static void displayLfoMenu(char* line1, char* line2);
+static void displayRatioMenu(char* line1, char* line2);
+static void displayMasterMenu(char* line1, char* line2);
+static void displayMicrostepMenu(char* line1, char* line2);
+static void displayResetMenu(char* line1, char* line2);
+
+// Navigation/Action Helpers
+static void handleSpeedMenu(int change);
+static void handleLfoMenu(int change);
+static void handleRatioMenu(int change);
+static void handleMasterMenu(int change);
+static void handleMicrostepMenu(int change);
+static void handleResetMenu(int change);
+static void applyRatioPreset(byte presetIndex);
+static void enterSubmenu(MenuState menu);
+static void returnToMainMenu();
 
 // Update the LCD display based on current menu and state
 void updateDisplay() {
@@ -121,14 +145,14 @@ void updateDisplay() {
 // --- Forward Declarations for Static Functions ---
 static void enterSubmenu(MenuState menu);
 static void returnToMainMenu();
-static void displayPausedStatic(char* line1, char* line2);
-static void displayMainMenuStatic(char* line1, char* line2);
-static void displaySpeedMenuStatic(char* line1, char* line2);
-static void displayLfoMenuStatic(char* line1, char* line2);
-static void displayRatioMenuStatic(char* line1, char* line2);
-static void displayMasterMenuStatic(char* line1, char* line2);
-static void displayMicrostepMenuStatic(char* line1, char* line2);
-static void displayResetMenuStatic(char* line1, char* line2);
+static void displayPaused(char* line1, char* line2);
+static void displayMainMenu(char* line1, char* line2);
+static void displaySpeedMenu(char* line1, char* line2);
+static void displayLfoMenu(char* line1, char* line2);
+static void displayRatioMenu(char* line1, char* line2);
+static void displayMasterMenu(char* line1, char* line2);
+static void displayMicrostepMenu(char* line1, char* line2);
+static void displayResetMenu(char* line1, char* line2);
 static void applyRatioPresetInternal(byte presetIndex);
 static void resetToDefaultsInternal();
 
@@ -276,7 +300,7 @@ void handleMenuSelection() {
       if (confirmingReset) {
         // Process confirmation choice
         if (resetChoice) {  // YES selected
-          resetToDefaults();
+          resetToDefaults(); // Call the main motor reset function
           confirmingReset = false;
           returnToMainMenu();
         } else {  // NO selected
@@ -651,7 +675,7 @@ static void displayResetMenuStatic(char* line1, char* line2) {
  * Apply a ratio preset to all motors
  * @param presetIndex The index of the preset to apply (0-based)
  */
-static void applyRatioPresetInternal(byte presetIndex) {
+static void applyRatioPreset(byte presetIndex) {
   if (presetIndex < NUM_RATIO_PRESETS) {
     for (byte i = 0; i < MOTORS_COUNT; i++) {
       // Use the centralized ratio presets from Config.h
@@ -665,10 +689,10 @@ static void applyRatioPresetInternal(byte presetIndex) {
 /**
  * Reset all settings to their default values
  */
-static void resetToDefaultsInternal() {
-    Serial.println(F("Menu: Resetting to defaults..."));
+static void resetMenuStateToDefaults() {
+    Serial.println(F("Menu: Resetting menu state to defaults..."));
     // Reset motor control settings first
-    resetToDefaults(); // Call the public MotorControl reset function
+    // resetToDefaults(); // REMOVED Recursive Call - Motor reset is handled elsewhere (e.g., Serial command)
     
     // Reset menu state variables
     currentMenu = MENU_MAIN;
@@ -685,42 +709,4 @@ static void resetToDefaultsInternal() {
     confirmingRatio = false;
     confirmingReset = false;
     systemPaused = false; // Ensure system is not paused after reset
-}
-
-// --- Non-static implementations that call the static versions ---
-
-void displayPaused(char* line1, char* line2) {
-  displayPausedStatic(line1, line2);
-}
-
-void displayMainMenu(char* line1, char* line2) {
-  displayMainMenuStatic(line1, line2);
-}
-
-void displaySpeedMenu(char* line1, char* line2) {
-  displaySpeedMenuStatic(line1, line2);
-}
-
-void displayLfoMenu(char* line1, char* line2) {
-  displayLfoMenuStatic(line1, line2);
-}
-
-void displayRatioMenu(char* line1, char* line2) {
-  displayRatioMenuStatic(line1, line2);
-}
-
-void displayMasterMenu(char* line1, char* line2) {
-  displayMasterMenuStatic(line1, line2);
-}
-
-void displayMicrostepMenu(char* line1, char* line2) {
-  displayMicrostepMenuStatic(line1, line2);
-}
-
-void displayResetMenu(char* line1, char* line2) {
-  displayResetMenuStatic(line1, line2);
-}
-
-void applyRatioPreset(byte presetIndex) {
-  applyRatioPresetInternal(presetIndex);
 } 

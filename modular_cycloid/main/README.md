@@ -82,6 +82,10 @@ Replace X with Y, Z, or A for other wheels.
 
 ## Version History
 
+### v1.2 (Current working 2024-04-10)
+    *   Fixed serial status
+    *   Microstepping implemented - useful for tuning coarse master speed.
+
 ### v1.1 (Refactored - 2024-04-07)
 
 *   **Major Refactoring for Modularity and State Management:**

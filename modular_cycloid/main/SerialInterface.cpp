@@ -73,7 +73,7 @@ void executeCommand(char* command) {
   }
   // Reset command
   if (strcmp(command, "reset") == 0) {
-    resetToDefaults(); // Call MotorControl public reset
+    resetToDefaults(); // Call MotorControl public reset (Removed MotorControl::)
     // Menu state is reset internally if needed via MotorControl calls
     Serial.println(F("All motor settings reset to defaults via Serial"));
     return;
@@ -149,6 +149,7 @@ void executeCommand(char* command) {
           setWheelSpeed(i, RATIO_PRESETS[presetIndex][i]);
       }
     } else {
+      // Split Serial.println for F() string and String()
       Serial.print(F("Error: Invalid preset number (1-"));
       Serial.print(NUM_RATIO_PRESETS);
       Serial.println(F(")"));
@@ -177,6 +178,7 @@ void printHelp() {
   Serial.println(F("rate<n>=<value>          - Set LFO rate 0-10Hz (n=1-4, e.g., rate3=2.5)"));
   Serial.println(F("polarity<n>=<0/1>        - Set LFO polarity: 0=uni, 1=bi (n=1-4, e.g., polarity4=1)"));
   Serial.println(F("microstep=<value>        - Set microstepping (1,2,4,8,16,32,64,128)"));
+  // Split Serial.println for F() string and String()
   Serial.print(F("preset=<value>           - Apply ratio preset (1-"));
   Serial.print(NUM_RATIO_PRESETS);
   Serial.println(F(")"));
@@ -185,38 +187,59 @@ void printHelp() {
 // Print system status
 void printSystemStatus() {
   Serial.println(F("\n--- System Status ---"));
-  Serial.print(F("System state: ")); Serial.println(getSystemPaused() ? F("PAUSED") : F("RUNNING"));
-  Serial.print(F("Master time: ")); Serial.print(getMasterTime()); Serial.println(F(" ms"));
-  Serial.print(F("Microstepping: ")); Serial.print(getCurrentMicrostepMode()); Serial.println(F("x"));
+  bool paused = getSystemPaused(); // Get pause state
+  Serial.print(F("System state: ")); Serial.println(paused ? F("PAUSED") : F("RUNNING"));
+  float masterT = getMasterTime(); // Get master time
+  Serial.print(F("Master time: ")); Serial.print(masterT); Serial.println(F(" ms"));
+  byte microstep = getCurrentMicrostepMode(); // Get microstep mode
+  Serial.print(F("Microstepping: ")); Serial.print(microstep); Serial.println(F("x"));
   
   Serial.println(F("\n--- Wheel Settings ---"));
   Serial.println(F("Wheel | Ratio | LFO Dep | LFO Rate | LFO Pol | Actual Speed (Steps/s)"));
   Serial.println(F("------|-------|---------|----------|---------|------------------------"));
   
   for (byte i = 0; i < MOTORS_COUNT; i++) {
+    // --- Get raw values for debugging ---
+    float rawWheelSpeed = getWheelSpeed(i);
+    float rawLfoDepth = getLfoDepth(i);
+    float rawLfoRate = getLfoRate(i);
+    bool rawLfoPolarity = getLfoPolarity(i);
+    float rawActualSpeed = getCurrentActualSpeed(i);
+    
+    // --- Print raw values (temporary debug) ---
+    Serial.print(F("DBG M")); Serial.print(i); 
+    Serial.print(F(": Spd=")); Serial.print(rawWheelSpeed); 
+    Serial.print(F(" Dpt=")); Serial.print(rawLfoDepth); 
+    Serial.print(F(" Rte=")); Serial.print(rawLfoRate); 
+    Serial.print(F(" Pol=")); Serial.print(rawLfoPolarity); 
+    Serial.print(F(" ActSpd=")); Serial.println(rawActualSpeed);
+    // --- End temporary debug ---
+
+    // --- Original formatted print ---
     Serial.print(F(" ")); 
     Serial.print(i + 1); 
     Serial.print(F("    | "));
     
     // Wheel Speed
-    Serial.print(getWheelSpeed(i), 3);
+    Serial.print(rawWheelSpeed, 3); // Use the raw value we got
     Serial.print(F(" | "));
     
     // LFO Depth
-    Serial.print(getLfoDepth(i), 1);
+    Serial.print(rawLfoDepth, 1); // Use the raw value we got
     Serial.print(F("% | "));
     
     // LFO Rate
-    Serial.print(getLfoRate(i), 2);
+    Serial.print(rawLfoRate, 2); // Use the raw value we got
     Serial.print(F(" | "));
     
     // LFO Polarity
-    Serial.print(getLfoPolarity(i) ? F("Bipolar ") : F("Unipolar"));
+    Serial.print(rawLfoPolarity ? F("Bipolar ") : F("Unipolar"));
     Serial.print(F(" | "));
     
     // Actual Speed
-    Serial.print(getCurrentActualSpeed(i), 1);
+    Serial.print(rawActualSpeed, 1); // Use the raw value we got
     
     Serial.println();
+    // --- End original formatted print ---
   }
 } 

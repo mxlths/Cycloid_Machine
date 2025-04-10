@@ -64,6 +64,9 @@ void setup() {
   // Show initial display after all setup
   updateDisplay();
   
+  // Explicitly set system to paused state at the end of setup
+  setSystemPaused(true); 
+
   Serial.println(F("Initialization complete - System is PAUSED"));
   Serial.println(F("Type 'help' for available commands"));
   Serial.println(F("Use 'resume' command or long-press encoder to start"));
