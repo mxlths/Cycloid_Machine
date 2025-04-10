@@ -80,7 +80,8 @@ enum MenuState {
   MENU_RATIO,
   MENU_MASTER,
   MENU_MICROSTEP,
-  MENU_RESET
+  MENU_RESET,
+  MENU_PAUSE  // New pause menu state
 };
 
 // --- MOTOR CONFIGURATION ---

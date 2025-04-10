@@ -17,7 +17,7 @@
 // extern LiquidCrystal_I2C lcd;
 
 // --- Constants ---
-const byte NUM_MAIN_OPTIONS = 6; // SPEED, LFO, RATIO, MASTER, MICROSTEP, RESET
+const byte NUM_MAIN_OPTIONS = 7; // SPEED, LFO, RATIO, MASTER, MICROSTEP, RESET, PAUSE
 const byte NUM_LFO_PARAMS_PER_WHEEL = 3; // Depth, Rate, Polarity
 const byte NUM_LFO_PARAMS_TOTAL = MOTORS_COUNT * NUM_LFO_PARAMS_PER_WHEEL; // Calculate as needed, MOTORS_COUNT is from Config.h
 
@@ -33,6 +33,7 @@ static byte selectedLfoParam = 0;
 static byte selectedRatioPreset = 0;
 static byte selectedMicrostepIndex = 4; // Default to 16x microstepping index
 static byte pendingMicrostepMode = DEFAULT_MICROSTEP; // Variable to hold pending selection
+static byte selectedPauseOption = 0; // 0=ON, 1=OFF, 2=EXIT
 
 // State flags for editing modes
 static bool editingSpeed = false;
@@ -76,6 +77,7 @@ static void displayRatioMenu(char* line1, char* line2);
 static void displayMasterMenu(char* line1, char* line2);
 static void displayMicrostepMenu(char* line1, char* line2);
 static void displayResetMenu(char* line1, char* line2);
+static void displayPauseMenu(char* line1, char* line2);
 
 // Navigation/Action Helpers
 static void handleSpeedMenu(int change);
@@ -84,6 +86,7 @@ static void handleRatioMenu(int change);
 static void handleMasterMenu(int change);
 static void handleMicrostepMenu(int change);
 static void handleResetMenu(int change);
+static void handlePauseMenu(int change);
 static void applyRatioPreset(byte presetIndex);
 static void enterSubmenu(MenuState menu);
 static void returnToMainMenu();
@@ -96,41 +99,40 @@ void updateDisplay() {
   char line1[LCD_COLS + 1];
   char line2[LCD_COLS + 1];
   
-  if (systemPaused) {
-    // Call helper for paused state
-    displayPaused(line1, line2); 
-  } else {
-    // MODIFY switch to call helper functions
-    switch (currentMenu) {
-      case MENU_MAIN:
-        displayMainMenu(line1, line2);
-        break;
-        
-      case MENU_SPEED:
-        displaySpeedMenu(line1, line2);
-        break;
-        
-      case MENU_LFO:
-        displayLfoMenu(line1, line2);
-        break;
-        
-      case MENU_RATIO:
-        displayRatioMenu(line1, line2);
-        break;
-        
-      case MENU_MASTER:
-        displayMasterMenu(line1, line2);
-        break;
-        
-      case MENU_MICROSTEP:
-        displayMicrostepMenu(line1, line2);
-        break;
-        
-      case MENU_RESET:
-        displayResetMenu(line1, line2);
-        break;
-        // Default case not strictly needed if MenuState enum is used correctly
-    }
+  // MODIFY switch to call helper functions - don't show special pause screen
+  switch (currentMenu) {
+    case MENU_MAIN:
+      displayMainMenu(line1, line2);
+      break;
+      
+    case MENU_SPEED:
+      displaySpeedMenu(line1, line2);
+      break;
+      
+    case MENU_LFO:
+      displayLfoMenu(line1, line2);
+      break;
+      
+    case MENU_RATIO:
+      displayRatioMenu(line1, line2);
+      break;
+      
+    case MENU_MASTER:
+      displayMasterMenu(line1, line2);
+      break;
+      
+    case MENU_MICROSTEP:
+      displayMicrostepMenu(line1, line2);
+      break;
+      
+    case MENU_RESET:
+      displayResetMenu(line1, line2);
+      break;
+      
+    case MENU_PAUSE:
+      displayPauseMenu(line1, line2);
+      break;
+      // Default case not strictly needed if MenuState enum is used correctly
   }
   
   // Ensure strings fit in LCD columns
@@ -160,12 +162,13 @@ void updateDisplay() {
 
 // Handle menu navigation based on encoder movement
 void handleMenuNavigation(int change) {
-  if (systemPaused && currentMenu != MENU_MAIN) return;
+  // Allow encoder operation in the main menu and pause menu even when paused
+  if (systemPaused && currentMenu != MENU_MAIN && currentMenu != MENU_PAUSE) return;
   
   switch (currentMenu) {
     case MENU_MAIN:
       // Cycle through main menu options
-      selectedMainMenuOption = (selectedMainMenuOption + 6 + change) % 6;  // 6 options total
+      selectedMainMenuOption = (selectedMainMenuOption + NUM_MAIN_OPTIONS + change) % NUM_MAIN_OPTIONS;
       break;
       
     case MENU_SPEED:
@@ -191,6 +194,10 @@ void handleMenuNavigation(int change) {
     case MENU_RESET:
       handleResetMenu(change);
       break;
+      
+    case MENU_PAUSE:
+      handlePauseMenu(change);
+      break;
   }
   
   updateDisplay();
@@ -198,7 +205,7 @@ void handleMenuNavigation(int change) {
 
 // Handle short button press for menu selection
 void handleMenuSelection() {
-  if (systemPaused && currentMenu != MENU_MAIN) return;
+  if (systemPaused && currentMenu != MENU_MAIN && currentMenu != MENU_PAUSE) return;
   
   switch (currentMenu) {
     case MENU_MAIN:
@@ -256,6 +263,22 @@ void handleMenuSelection() {
         }
       }
       break;
+      
+    case MENU_PAUSE:
+      // Process pause menu selection
+      if (selectedPauseOption == 0) {  // ON selected
+        systemPaused = true;
+        stopAllMotors(); // Call MotorControl function
+        Serial.println(F("System Paused (Menu)"));
+        returnToMainMenu();
+      } else if (selectedPauseOption == 1) {  // OFF selected
+        systemPaused = false;
+        Serial.println(F("System Resumed (Menu)"));
+        returnToMainMenu();
+      } else {  // EXIT selected
+        returnToMainMenu();
+      }
+      break;
   }
   
   updateDisplay();
@@ -263,61 +286,25 @@ void handleMenuSelection() {
 
 // Handle long button press for return/pause (called by InputHandling)
 void handleMenuReturn() { 
+  // We're moving away from using long press for navigation,
+  // but keeping basic functionality for backward compatibility
+  
   if (currentMenu == MENU_MAIN) {
-    // Toggle pause only when in the main menu
+    // Toggle pause only when in the main menu - consider removing this in the future
+    // when the pause menu is fully integrated
     systemPaused = !systemPaused; 
     if (systemPaused) {
       stopAllMotors(); // Call MotorControl function
-      Serial.println(F("System Paused (Menu)")); // Add feedback
+      Serial.println(F("System Paused (Long Press)")); // Add feedback
     } else {
-      Serial.println(F("System Resumed (Menu)")); // Add feedback
+      Serial.println(F("System Resumed (Long Press)")); // Add feedback
     }
     // Update display immediately after state change
     updateDisplay(); 
-  } else if (editingSpeed || editingLfo || editingMaster) {
-     // If editing a value, long press just exits edit mode
-     // without changing pause state or returning to main menu
-     editingSpeed = false;
-     editingLfo = false;
-     editingMaster = false;
-     Serial.println(F("Exited edit mode")); // Optional feedback
-     updateDisplay(); // Update display to remove edit indicator '#'
-  } else if (currentMenu == MENU_MICROSTEP) {
-    // If editing, apply the pending change. If not editing, return to main menu
-    if (editingMicrostep) {
-        if (updateMicrostepMode(pendingMicrostepMode)) {
-            Serial.print(F("Microstepping updated to "));
-            Serial.print(pendingMicrostepMode);
-            Serial.println("x (Menu)");
-        } else {
-             Serial.println(F("Microstepping update failed!"));
-             pendingMicrostepMode = getCurrentMicrostepMode(); // Revert pending
-             // Update index too
-             for (byte i = 0; i < NUM_VALID_MICROSTEPS; i++) {
-                if (validMicrosteps[i] == pendingMicrostepMode) {
-                    currentMicrostepIndex = i;
-                    break;
-                }
-             }
-        }
-        editingMicrostep = false; // Exit editing mode
-        // Don't return to main menu automatically, stay in microstep menu
-        updateDisplay(); // Update display to show applied value without '#'
-    } else {
-         returnToMainMenu(); // Not editing, long press returns to main menu
-         // DON'T toggle pause state - updateDisplay is called within returnToMainMenu
-    }
-  } else if (confirmingRatio || confirmingReset) {
-      // If confirming something, long press cancels and returns to main menu
-      confirmingRatio = false;
-      confirmingReset = false;
-      returnToMainMenu();
-      // DON'T toggle pause state - updateDisplay is called within returnToMainMenu
   } else {
-    // Default behavior: Return to main menu from any other submenu/state
-    // WITHOUT changing pause state
+    // For all other menus, just return to the main menu
+    // This will be replaced by explicit EXIT options in the future
     returnToMainMenu();
-    // updateDisplay is called within returnToMainMenu
   }
 }
 
@@ -414,6 +401,30 @@ static void handleResetMenu(int change) {
   }
 }
 
+// Handle PAUSE menu navigation
+static void handlePauseMenu(int change) {
+  // Cycle through the pause options: ON, OFF, EXIT
+  selectedPauseOption = (selectedPauseOption + 3 + change) % 3;
+}
+
+/**
+ * Display the pause menu screen
+ * @param line1 Buffer for the first line of display
+ * @param line2 Buffer for the second line of display
+ */
+static void displayPauseMenu(char* line1, char* line2) {
+  strcpy(line1, "PAUSE SYSTEM:");
+  
+  // Show the current selection with a cursor
+  if (selectedPauseOption == 0) {
+    strcpy(line2, ">ON  OFF  EXIT");
+  } else if (selectedPauseOption == 1) {
+    strcpy(line2, " ON >OFF  EXIT");
+  } else { // selectedPauseOption == 2
+    strcpy(line2, " ON  OFF >EXIT");
+  }
+}
+
 // --- Getter for Pause State ---
 bool getSystemPaused() {
     return systemPaused;
@@ -452,11 +463,18 @@ static void displayPaused(char* line1, char* line2) {
  */
 static void displayMainMenu(char* line1, char* line2) {
   // Simple sliding window display for main menu
-  const char* options[] = {"SPEED", "LFO", "RATIO", "MASTER", "STEP", "RESET"};
+  const char* options[] = {"SPEED", "LFO", "RATIO", "MASTER", "STEP", "RESET", "PAUSE"};
   byte prev = (selectedMainMenuOption + NUM_MAIN_OPTIONS - 1) % NUM_MAIN_OPTIONS;
   byte next = (selectedMainMenuOption + 1) % NUM_MAIN_OPTIONS;
-  sprintf(line1, ">%s", options[selectedMainMenuOption]);
-  sprintf(line2, " %s %s %s", options[prev], options[next], options[(next+1)%NUM_MAIN_OPTIONS]); // Show more context
+  
+  // Add a "P" prefix in line1 to indicate if the system is paused
+  if (systemPaused) {
+    sprintf(line1, "P>%s", options[selectedMainMenuOption]);
+  } else {
+    sprintf(line1, ">%s", options[selectedMainMenuOption]);
+  }
+  
+  sprintf(line2, " %s %s", options[prev], options[next]); // Show previous and next options
 }
 
 /**
@@ -677,6 +695,10 @@ static void enterSubmenu(MenuState menu) {
     case MENU_RESET:
       confirmingReset = true;  // Start with confirmation dialog
       resetChoice = false;     // Default to NO
+      break;
+    case MENU_PAUSE:
+      // Initialize pause menu state - default to current state
+      selectedPauseOption = systemPaused ? 0 : 1; // Select ON if paused, OFF if not
       break;
     default: // Handle MENU_MAIN or unexpected cases
         break; 
