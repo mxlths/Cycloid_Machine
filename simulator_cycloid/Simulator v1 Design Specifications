@@ -1,0 +1,113 @@
+# Cycloid Drawing Machine Simulator Specification v1
+
+## Overview
+This document specifies the configuration format for the Cycloid Drawing Machine simulator. The simulator allows defining various machine configurations including drive wheels, linkages, compound wheels, and a rotating canvas/platen.
+
+## Coordinate System and Units
+- Origin (0,0) is located at the bottom left of the workspace
+- All spatial measurements are in millimeters (mm)
+- All positions are specified in positive X,Y coordinates
+- Rotational speeds are specified in rotations per second (RPS)
+- Rotation direction is clockwise for positive values, counter-clockwise for negative
+
+## Value Ranges
+- Spatial dimensions (rod lengths, wheel radii): 0 to 1000mm
+- Base rotation speeds: 0.00167 RPS (1 rotation/10min) to 1.0 RPS (1 rotation/sec)
+- Modulation frequency: 0.0 to 1.0 Hz
+- Modulation amplitude: 0.0 to 1.0 (proportion of base speed)
+- Modulation phase: 0.0 to 1.0 (proportion of wave period)
+
+## Speed Modulation
+Speed modulation allows for dynamic variation of rotation speeds:
+- Base speed sets the center point of rotation
+- Amplitude determines maximum deviation from base speed
+- Frequency sets how often the modulation cycle repeats
+- Phase shifts the start point of the modulation wave
+- Available waveforms:
+  - none: No modulation
+  - sine: Smooth sinusoidal variation
+  - triangle: Linear ramping up and down
+  - square: Abrupt changes between high and low speeds
+
+## Configuration Format
+The machine configuration is specified in XML format as follows:
+
+```xml
+<machine_configuration>
+    <global_settings>
+        <master_speed>value</master_speed>
+    </global_settings>
+
+    <canvas>
+        <center_position x="value" y="value"/>
+        <diameter>value</diameter>
+        <drawing_area>
+            <width>value</width>
+            <height>value</height>
+        </drawing_area>
+        <speed_control>
+            <base_ratio>value</base_ratio>
+            <modulation>
+                <type>none/sine/triangle/square</type>
+                <frequency>value</frequency>
+                <amplitude>value</amplitude>
+                <phase>value</phase>
+            </modulation>
+        </speed_control>
+    </canvas>
+    
+    <drive_wheels>
+        <wheel id="1">
+            <center_position x="value" y="value"/>
+            <speed_control>
+                <base_ratio>value</base_ratio>
+                <modulation>
+                    <type>none/sine/triangle/square</type>
+                    <frequency>value</frequency>
+                    <amplitude>value</amplitude>
+                    <phase>value</phase>
+                </modulation>
+            </speed_control>
+            <connection_points>
+                <point id="1" radius="value"/>
+            </connection_points>
+            <compound_wheels>
+                <wheel>
+                    <ratio>value</ratio>
+                    <connection_points>
+                        <point id="1" radius="value"/>
+                    </connection_points>
+                </wheel>
+            </compound_wheels>
+        </wheel>
+    </drive_wheels>
+    
+    <linkages>
+        <rod id="1">
+            <length>value</length>
+            <connections>
+                <start_point connected_to="wheel_1_point_1"/>
+                <mid_point distance_from_start="value" connected_to="rod_2_end"/>
+                <end_point connected_to="rod_3_start"/>
+            </connections>
+            <pen_position distance_from_start="value"/>
+        </rod>
+    </linkages>
+</machine_configuration>
+```
+
+## Notes
+1. All rotations and movements occur in the X/Y plane
+2. All joints are rotational
+3. Rods can have up to three connection points (start, mid, end)
+4. Pen position can be placed anywhere along a rod
+5. Compound wheels are driven by their parent drive wheel at the specified ratio
+6. Speed modulation is optional for all rotating elements
+7. Canvas/platen rotation is independent of drive wheels
+
+## Future Considerations
+- Physical constraints validation
+- Maximum rod lengths
+- Valid speed ratios
+- Mechanical clearance checking
+- Additional modulation waveforms

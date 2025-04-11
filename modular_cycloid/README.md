@@ -3,7 +3,7 @@
 # Cycloid_Machine
 Arduino and Python code related to a cycloid art drawing machine.
 
-Other Resources
+# Other Drawing Machines and Inspiration
   https://wheelof.com/sketch/
   https://robertbalke.de/about/
   https://www.youtube.com/@robertbalke6841
