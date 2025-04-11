@@ -1,10 +1,20 @@
-- Pi Zero 2 W serial control
-- Web interface for Zero 2 W interfaced to serial control
-    Flask/Django web server
-    WebSocket for real-time updates
-    SD card for storing presets/configurations
-    Touch display using PyGame or Kivy
-- Consider commoning of grounds between Pi Zero and Arduino. Ensure only 1 ground connection is commoned to avoid ground loops / circulating currents.
-- SD card on Pi for saving and recalling machine states
-- LCD screen maybe?
-- Free up processes on arduino for pure motor control, handle all input via Pi
+Software/Hardware upgrades
+    - Pi Zero 2 W serial control
+    - Web interface for Zero 2 W interfaced to serial control
+        Flask/Django web server
+        WebSocket for real-time updates
+        SD card for storing presets/configurations
+        Touch display using PyGame or Kivy
+    - Consider commoning of grounds between Pi Zero and Arduino. Ensure only 1 ground connection is commoned to avoid ground loops / circulating currents.
+    - SD card on Pi for saving and recalling machine states
+    - LCD screen maybe?
+    - Free up processes on arduino for pure motor control, handle all input via Pi
+    - Consider adding DIL switches for microstepping control. Might not be required once tuning complete.
+    - Set current on stepper drivers / get new 128 microstep silent drivers
+
+
+
+
+Transmission upgrades
+    - 2 x UCF204 pillow block bearings with 20mm ground stainless rod connecting them, 60T GT2 pulley mounted to shaft
+    - Might required re-design to accomodate height of bearings
