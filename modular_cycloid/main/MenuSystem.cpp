@@ -237,16 +237,14 @@ void handleMenuSelection() {
       
     case MENU_RATIO:
       if (!confirmingRatio) {
-        // Enter confirmation mode
+        // Go to confirmation screen
         confirmingRatio = true;
         ratioChoice = false;  // Default to NO
       } else {
-        // Process confirmation choice
         if (ratioChoice) {  // YES selected
           applyRatioPreset(selectedRatioPreset);
           confirmingRatio = false;
-          returnToMainMenu();
-        } else {  // NO selected
+        } else {
           confirmingRatio = false;  // Return to ratio selection
         }
       }
