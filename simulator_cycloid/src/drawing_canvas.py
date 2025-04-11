@@ -1,9 +1,9 @@
 from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import Qt, QPoint, QPointF, pyqtSignal
-from PyQt6.QtGui import QPainter, QPen, QColor, QBrush, QFocusEvent
+from PyQt6.QtCore import Qt, QPoint, QPointF, pyqtSignal, QTimer
+from PyQt6.QtGui import QPainter, QPen, QColor, QBrush, QFocusEvent, QPolygonF
 from components import Wheel, Rod, ConnectionPoint
 import math
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Union, List, Tuple, Dict
 
 class DrawingCanvas(QWidget):
     # Signal emitted when a component is selected or deselected
@@ -30,6 +30,7 @@ class DrawingCanvas(QWidget):
         # Components
         self.wheels: List[Wheel] = []
         self.rods: List[Rod] = []
+        self.components_by_id: Dict[int, Union[Wheel, Rod]] = {} # ID lookup
         
         # Component ID Counter
         self._next_component_id = 1 # Start IDs from 1
@@ -51,6 +52,18 @@ class DrawingCanvas(QWidget):
         
         # Snap settings
         self.snap_size = 1  # Default to 1mm
+        
+        # --- Simulation State --- 
+        self.simulation_timer = QTimer(self)
+        self.simulation_timer.timeout.connect(self._update_simulation)
+        self.simulation_running = False
+        self.simulation_time_step = 1 / 60.0 # Time step for 60 FPS target
+        self.current_simulation_angle_deg = 0.0 # Or simulation time
+        # Pen Path - Store canvas coordinates
+        self.pen_path_points = QPolygonF() # Use QPolygonF for efficient drawing
+        self.pen_rod_id: Optional[int] = None # ID of the rod acting as the pen
+        self.pen_point_type: Optional[str] = 'end' # Which point on pen_rod_id? 'start' or 'end'
+        # --- End Simulation State ---
         
         # Enable mouse tracking for hover effects
         self.setMouseTracking(True)
@@ -75,6 +88,11 @@ class DrawingCanvas(QWidget):
         
         # Draw components
         self._draw_components(painter)
+        
+        # Draw pen path
+        if not self.pen_path_points.isEmpty():
+            painter.setPen(QPen(Qt.GlobalColor.darkCyan, 1)) # Pen color
+            painter.drawPolyline(self.pen_path_points)
         
     def _screen_to_canvas(self, point: QPointF) -> QPointF:
         """Convert screen coordinates to canvas coordinates"""
@@ -185,15 +203,6 @@ class DrawingCanvas(QWidget):
         painter.setBrush(QBrush(end_color))
         painter.drawEllipse(end_screen, 4, 4)
         
-        # Draw connection points
-        painter.setPen(QPen(Qt.GlobalColor.red, 2))
-        painter.setBrush(QBrush(Qt.GlobalColor.red))
-        for conn in rod.connections:
-            if isinstance(conn.distance_from_start, (int, float)):
-                pos = rod.get_point_at_distance(conn.distance_from_start)
-                screen_pos = self._canvas_to_screen(pos)
-                painter.drawEllipse(screen_pos, 6, 6)
-        
         # Draw hover connection indicator
         if self.hover_connection and rod.selected:
             painter.setPen(QPen(Qt.GlobalColor.green, 2))
@@ -222,6 +231,7 @@ class DrawingCanvas(QWidget):
         self._next_component_id += 1
         wheel = Wheel(id=new_id, center=center, diameter=diameter)
         self.wheels.append(wheel)
+        self.components_by_id[new_id] = wheel # Add to lookup
         self.update() 
         return wheel
         
@@ -380,6 +390,12 @@ class DrawingCanvas(QWidget):
             
             if isinstance(self.selected_component, Wheel):
                 self.selected_component.move_to(target_point)
+                # Propagate constraints after moving a wheel
+                new_pos = self.selected_component.get_connection_point_position()
+                initial_targets = {}
+                if new_pos:
+                    initial_targets[(self.selected_component.id, self.selected_component.CONNECTION_POINT_ID)] = new_pos
+                self._propagate_constraints(initial_targets)
             elif isinstance(self.selected_component, Rod):
                 # Disconnect endpoint if moving a connected one
                 if self.dragging_point == 'start' and self.selected_component.start_connection:
@@ -390,10 +406,18 @@ class DrawingCanvas(QWidget):
                     self.selected_component.end_connection = None
                     
                 # Move the specific endpoint
+                moved_point_id = None
                 if self.dragging_point == 'start':
                     self.selected_component.move_start_to(target_point)
+                    moved_point_id = 'start'
                 elif self.dragging_point == 'end':
                     self.selected_component.move_end_to(target_point)
+                    moved_point_id = 'end'
+                # Propagate constraints if an endpoint moved
+                if moved_point_id:
+                    moved_pos = self.selected_component.start_pos if moved_point_id == 'start' else self.selected_component.end_pos
+                    initial_targets = {(self.selected_component.id, moved_point_id): moved_pos}
+                    self._propagate_constraints(initial_targets)
             
             self.hover_connection = nearest
             self.update()
@@ -501,6 +525,12 @@ class DrawingCanvas(QWidget):
                 current = self.selected_component.center
                 new_center = QPointF(current.x() + delta_x, current.y() + delta_y)
                 self.selected_component.move_to(new_center)
+                # Propagate constraints after moving a wheel
+                new_pos = self.selected_component.get_connection_point_position()
+                initial_targets = {}
+                if new_pos:
+                    initial_targets[(self.selected_component.id, self.selected_component.CONNECTION_POINT_ID)] = new_pos
+                self._propagate_constraints(initial_targets)
             elif isinstance(self.selected_component, Rod):
                 # Move both endpoints
                 start = self.selected_component.start_pos
@@ -514,7 +544,13 @@ class DrawingCanvas(QWidget):
                     
                 self.selected_component.start_pos = QPointF(start.x() + delta_x, start.y() + delta_y)
                 self.selected_component.end_pos = QPointF(end.x() + delta_x, end.y() + delta_y)
-                
+                # Propagate constraints after nudging a rod
+                initial_targets = {
+                    (self.selected_component.id, 'start'): self.selected_component.start_pos,
+                    (self.selected_component.id, 'end'): self.selected_component.end_pos
+                }
+                self._propagate_constraints(initial_targets)
+            
             # Update canvas
             self.update()
             
@@ -568,6 +604,7 @@ class DrawingCanvas(QWidget):
                          start_pos=self.rod_start_pos,
                          end_pos=end_pos)
                 self.rods.append(rod)
+                self.components_by_id[new_id] = rod # Add to lookup
                 
             # Reset creation state regardless of whether a rod was created
             self.creating_rod = False
@@ -599,3 +636,171 @@ class DrawingCanvas(QWidget):
         self.dragging_point = None
         self.component_selected.emit(None) # Notify panel to clear
         self.update() 
+
+        # Remove from lists and lookup
+        if isinstance(component_to_delete, Wheel):
+            self.wheels.remove(component_to_delete)
+        elif isinstance(component_to_delete, Rod):
+            self.rods.remove(component_to_delete)
+        del self.components_by_id[component_id] # Remove from lookup
+        
+        print(f"Deleted component {component_id}") # Adjusted print
+
+    def _update_component_lookup(self):
+        """Rebuild the component ID lookup dictionary."""
+        self.components_by_id.clear()
+        for wheel in self.wheels:
+            self.components_by_id[wheel.id] = wheel
+        for rod in self.rods:
+            self.components_by_id[rod.id] = rod
+
+    # --- Simulation Update Helpers ---
+    def _get_current_connection_point_positions(self) -> Dict[Tuple[int, str], QPointF]:
+        """Gets the current world positions of all defined connection points.
+           Returns a dictionary keyed by (component_id, point_id).
+        """
+        positions = {}
+        for wheel in self.wheels:
+            pos = wheel.get_connection_point_position()
+            if pos:
+                positions[(wheel.id, wheel.CONNECTION_POINT_ID)] = pos
+        # Add rod endpoints as potential connection targets
+        for rod in self.rods:
+            positions[(rod.id, 'start')] = rod.start_pos
+            positions[(rod.id, 'end')] = rod.end_pos
+        return positions
+
+    def _propagate_constraints(self, initial_targets: Optional[Dict[Tuple[int, str], QPointF]] = None):
+        """Iteratively updates rod positions based on connections.
+           Starts with optional initial target positions for moved components.
+        """
+        num_passes = 5 # Increased passes slightly for potentially complex manual moves
+        
+        # Get the current state of all connection points to check against
+        target_positions = self._get_current_connection_point_positions()
+        if initial_targets:
+            target_positions.update(initial_targets) # Update with manually moved points
+            
+        for _ in range(num_passes):
+            something_moved = False
+            for rod in self.rods:
+                original_start = QPointF(rod.start_pos) # Copy positions
+                original_end = QPointF(rod.end_pos)
+                
+                target_start_pos = None
+                if rod.start_connection:
+                    connected_key = rod.start_connection # (comp_id, point_id)
+                    if connected_key in target_positions:
+                        target_start_pos = target_positions[connected_key]
+                
+                target_end_pos = None
+                if rod.end_connection:
+                    connected_key = rod.end_connection
+                    if connected_key in target_positions:
+                        target_end_pos = target_positions[connected_key]
+                              
+                # Apply constraints (similar logic to _update_simulation)
+                moved_start = False
+                moved_end = False
+                if target_start_pos is not None and target_start_pos != rod.start_pos:
+                    rod.start_pos = target_start_pos
+                    # Adjust end_pos to maintain length
+                    dx = rod.end_pos.x() - rod.start_pos.x()
+                    dy = rod.end_pos.y() - rod.start_pos.y()
+                    current_dist = math.sqrt(dx*dx + dy*dy)
+                    if current_dist > 1e-6: 
+                         scale = rod.length / current_dist
+                         rod.end_pos = QPointF(rod.start_pos.x() + dx * scale, rod.start_pos.y() + dy * scale)
+                    moved_start = True
+                         
+                # Check end connection *after* potential start adjustment
+                # Use the potentially updated target_positions if the connected component is another rod updated this pass
+                if rod.end_connection:
+                     connected_key = rod.end_connection
+                     if connected_key in target_positions:
+                           target_end_pos = target_positions[connected_key]
+                           
+                if target_end_pos is not None and target_end_pos != rod.end_pos:
+                    # Only adjust start if start wasn't the primary driver in this step
+                    if not moved_start:
+                        rod.end_pos = target_end_pos
+                        # Adjust start_pos to maintain length
+                        dx = rod.start_pos.x() - rod.end_pos.x()
+                        dy = rod.start_pos.y() - rod.end_pos.y()
+                        current_dist = math.sqrt(dx*dx + dy*dy)
+                        if current_dist > 1e-6:
+                             scale = rod.length / current_dist
+                             rod.start_pos = QPointF(rod.end_pos.x() + dx * scale, rod.end_pos.y() + dy * scale)
+                    moved_end = True
+                         
+                # Check if this rod moved and update target positions for next pass
+                if moved_start or moved_end:
+                    something_moved = True
+                    target_positions[(rod.id, 'start')] = rod.start_pos
+                    target_positions[(rod.id, 'end')] = rod.end_pos
+                    
+            if not something_moved:
+                 break # Exit passes early if positions stabilized
+
+    # --- Simulation Control Methods --- 
+    def start_simulation(self):
+        if not self.simulation_running:
+            # Reset path and potentially time when starting
+            self.pen_path_points.clear()
+            self.current_simulation_angle_deg = 0.0 
+            # TODO: Find the pen rod dynamically or allow setting it
+            # For now, assume last added rod is the pen, using end point
+            if self.rods:
+                self.pen_rod_id = self.rods[-1].id
+                self.pen_point_type = 'end'
+            else:
+                self.pen_rod_id = None
+                
+            interval_ms = int(self.simulation_time_step * 1000)
+            self.simulation_timer.start(interval_ms) 
+            self.simulation_running = True
+            print("Simulation started")
+            
+    def stop_simulation(self):
+        if self.simulation_running:
+            self.simulation_timer.stop()
+            self.simulation_running = False
+            print("Simulation stopped")
+            
+    def _update_simulation(self):
+        """Core simulation update loop called by the timer."""
+        if not self.simulation_running:
+            return
+
+        # --- 1. Update Driving Components (Wheels) --- 
+        master_angular_speed_deg_per_sec = 36.0 
+        angle_increment = master_angular_speed_deg_per_sec * self.simulation_time_step
+        # self.current_simulation_angle_deg = (self.current_simulation_angle_deg + angle_increment) % 360 # Angle only relevant if used elsewhere
+
+        initial_targets: Dict[Tuple[int, str], QPointF] = {} # Store new wheel positions
+        
+        for wheel in self.wheels:
+            wheel_angle_increment = angle_increment * wheel.speed_ratio
+            if wheel.connection_phase_deg is not None:
+                 wheel.connection_phase_deg = (wheel.connection_phase_deg + wheel_angle_increment) % 360
+            
+            new_pos = wheel.get_connection_point_position()
+            if new_pos:
+                initial_targets[(wheel.id, wheel.CONNECTION_POINT_ID)] = new_pos
+        
+        # --- 2. Update Constrained Components (Rods) using extracted method --- 
+        self._propagate_constraints(initial_targets)
+
+        # --- 3. Record Pen Path --- 
+        if self.pen_rod_id is not None and self.pen_rod_id in self.components_by_id:
+            pen_rod = self.components_by_id[self.pen_rod_id]
+            if isinstance(pen_rod, Rod):
+                pen_pos_canvas = pen_rod.end_pos if self.pen_point_type == 'end' else pen_rod.start_pos
+                pen_pos_screen = self._canvas_to_screen(pen_pos_canvas)
+                # Add point if it's different from the last one to avoid duplicates
+                if self.pen_path_points.isEmpty() or self.pen_path_points.last() != pen_pos_screen:
+                    self.pen_path_points.append(pen_pos_screen)
+        
+        # --- 4. Trigger Repaint --- 
+        self.update()
+    # --- End Simulation --- 

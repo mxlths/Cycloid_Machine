@@ -1,0 +1,20 @@
+PyQt6 for Image Generation
+    Suitability: Yes, PyQt6 (specifically the Qt framework underneath) is very well-suited for generating the final pattern image.
+    Mechanism: You don't run the simulation on the final image directly. Instead:
+    Run the simulation as described above, collecting the sequence of pen points in self.pen_path_points.
+    When the user wants to export:
+    Create an off-screen image object: QImage (good for pixel manipulation and saving to raster formats like PNG/JPG) or use QSvgGenerator (for saving to SVG vector format).
+    Create a QPainter associated with the QImage or QSvgGenerator.
+    Configure the painter (background color, pen color/thickness for the path).
+    Use the painter to draw the collected path points onto the image/SVG generator (painter.drawPolyline(self.pen_path_points)). You might need to scale/translate coordinates from your simulation space to the output image pixels.
+    (Optional) Draw the wheels/rods themselves onto the image too, if desired.
+    Save the QImage to a file (qimage.save("pattern.png")) or finalize the QSvgGenerator output.
+
+    Order of operations
+        Define connection logic
+        Define pen component
+        Add rotation to wheels
+        Add motion of linkages
+        Capture Pen movements 
+        Translate image into SVG
+        Translate pen motion into GCode for pen plotter
