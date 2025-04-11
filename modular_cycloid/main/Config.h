@@ -88,13 +88,16 @@ enum MenuState {
 #define MOTORS_COUNT 4  // Number of motors in the system
 
 // --- RATIO PRESETS CONFIGURATION ---
-#define NUM_RATIO_PRESETS 4
+#define NUM_RATIO_PRESETS 7
 // Ratio presets define the relative speeds between motors
 const float RATIO_PRESETS[NUM_RATIO_PRESETS][MOTORS_COUNT] = {
-  {1.0, 1.0, 1.0, 1.0},    // Preset 1: 1:1:1:1 (All equal)
-  {1.0, 2.0, 3.0, 4.0},    // Preset 2: 1:2:3:4 (Linear progression)
-  {1.0, -1.0, 1.0, -1.0},  // Preset 3: 1:-1:1:-1 (Alternating directions)
-  {1.0, 1.5, 2.25, 3.375}  // Preset 4: Geometric progression (1:1.5:2.25:3.375)
+  {1.0, 1.0, 1.0, 1.0},        // Preset 1: 1:1:1:1 (All equal)
+  {1.0, 2.0, 3.0, 4.0},        // Preset 2: 1:2:3:4 (Linear progression)
+  {1.0, -1.0, 1.0, -1.0},      // Preset 3: 1:-1:1:-1 (Alternating directions)
+  {1.0, 1.5, 2.25, 3.375},     // Preset 4: Geometric progression (1:1.5:2.25:3.375)
+  {2.0, 3.236, 5.236, 8.472},  // Preset 5: Golden ratio (φ ≈ 1.618) progression
+  {1.0, 2.0, 4.0, 8.0},        // Preset 6: Logarithmic spiral (powers of 2)
+  {1.0, -1.5, 2.25, -3.375}    // Preset 7: Mixed direction geometric
 };
 
 // --- LFO CONFIGURATION ---
@@ -108,12 +111,12 @@ const float RATIO_PRESETS[NUM_RATIO_PRESETS][MOTORS_COUNT] = {
 const int VALID_MICROSTEPS[NUM_VALID_MICROSTEPS] = {1, 2, 4, 8, 16, 32, 64, 128};
 
 // --- DEFAULT VALUES ---
-#define DEFAULT_MASTER_TIME 1000 // Default master time (period) in milliseconds (e.g., 1000ms for 60RPM at speed 1.0)
+#define DEFAULT_MASTER_TIME 2000 // Default master time (period) in milliseconds (e.g., 1000ms for 60RPM at speed 1.0)
 #define DEFAULT_SPEED_RATIO 1.0 // Default ratio for all motors
 #define DEFAULT_LFO_DEPTH 0     // Default LFO depth (0 = off)
 #define DEFAULT_LFO_RATE 1      // Default LFO rate in Hz
 #define DEFAULT_LFO_POLARITY false // Default LFO polarity (false = unipolar)
-#define DEFAULT_MICROSTEP 16    // Default microstepping mode (MATCH YOUR JUMPERS)
+#define DEFAULT_MICROSTEP 4    // Default microstepping mode (MATCH YOUR JUMPERS)
 
 // --- GLOBAL HARDWARE OBJECTS ---
 // Declare global hardware objects defined in main.ino

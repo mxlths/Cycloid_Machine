@@ -681,30 +681,33 @@ static void displayRatioMenu(char* line1, char* line2) {
   if (confirmingRatio) {
     strcpy(line1, "Apply Preset?");
     
+    // Show YES/NO options with cursor
+    if (ratioChoice) {
+      strcpy(line2, " NO   >YES");
+    } else {
+      strcpy(line2, ">NO    YES");
+    }
+  } else {
+    // Show the preset number in first line
     char buffer[LCD_COLS + 1];
-    // Show the ratios from the preset using Config.h
-    // Format for display: "P1: 1.0:1.0:1.0:1.0"
-    sprintf(buffer, "P%d:", selectedRatioPreset + 1);
+    sprintf(buffer, "Preset %d", selectedRatioPreset + 1);
+    strcpy(line1, buffer);
+    
+    // Show a preview of the ratios in the second line
+    char ratioBuffer[LCD_COLS + 1] = "";
     
     for (byte i = 0; i < MOTORS_COUNT; i++) {
-      char ratioStr[6]; // Buffer for ratio display
+      char ratioStr[5]; // Buffer for ratio display (smaller to fit)
       dtostrf(RATIO_PRESETS[selectedRatioPreset][i], 3, 1, ratioStr);
       
+      // Add to buffer (with separator if not last)
+      strcat(ratioBuffer, ratioStr);
       if (i < MOTORS_COUNT - 1) {
-        strcat(buffer, ratioStr);
-        strcat(buffer, ":");
-      } else {
-        strcat(buffer, ratioStr);
+        strcat(ratioBuffer, ":");
       }
     }
     
-    strcpy(line2, buffer);
-  } else {
-    strcpy(line1, "Select Ratio");
-    
-    char buffer[LCD_COLS + 1];
-    sprintf(buffer, "Preset %d", selectedRatioPreset + 1);
-    strcpy(line2, buffer);
+    strcpy(line2, ratioBuffer);
   }
 }
 
