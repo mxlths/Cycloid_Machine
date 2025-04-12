@@ -1,0 +1,59 @@
+<?xml version="1.0" ?>
+<machine_configuration>
+    <global_settings>
+        <master_speed>1.0</master_speed>
+    </global_settings>
+    <canvas>
+        <center_position x="400" y="300"/>
+        <diameter>600</diameter>
+        <drawing_area>
+            <width>800</width>
+            <height>600</height>
+        </drawing_area>
+        <speed_control>
+            <base_ratio>0.0</base_ratio>
+        </speed_control>
+    </canvas>
+    <drive_wheels>
+        <wheel id="1">
+            <center_position x="142.0" y="179.0"/>
+            <diameter>250.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="100.0"/>
+            </connection_points>
+        </wheel>
+        <wheel id="2">
+            <center_position x="467.0" y="553.0"/>
+            <diameter>250.0</diameter>
+            <speed_control>
+                <base_ratio>-1.0</base_ratio>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="100.0"/>
+            </connection_points>
+        </wheel>
+    </drive_wheels>
+    <linkages>
+        <rod id="12">
+            <length>389.2660708048046</length>
+            <start_position x="242.0" y="179.0"/>
+            <end_position x="627.4088360495176" y="233.66354337917744"/>
+            <connections>
+                <start_point connected_to="wheel_1_point_p1"/>
+                <end_point connected_to="rod_12_end"/>
+            </connections>
+        </rod>
+        <rod id="13">
+            <length>388.5614494516923</length>
+            <start_position x="567.0" y="553.0"/>
+            <end_position x="639.2232150618161" y="171.20973400814074"/>
+            <connections>
+                <start_point connected_to="wheel_2_point_p1"/>
+            </connections>
+            <pen_position distance_from_start="375.0"/>
+        </rod>
+    </linkages>
+</machine_configuration>

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Union, Tuple, Dict
 from PyQt6.QtCore import QPointF
 import math
 import uuid
@@ -7,7 +7,9 @@ import uuid
 @dataclass
 class ConnectionPoint:
     radius: float  # Distance from wheel center
-    id: str
+    id: str        # Identifier for this connection point (e.g., "p1", "main")
+    # Optional: Add phase angle if needed for initial positioning or rotation
+    # initial_phase_deg: float = 0.0 
 
 @dataclass
 class RodConnection:
@@ -21,9 +23,15 @@ class Rod:
     start_pos: QPointF  # Current position of start point
     end_pos: QPointF    # Current position of end point
     id: int # ID is now assigned externally
-    # Connections FROM this rod's endpoints TO other components
+    # Connections FROM this rod's points TO other components
     start_connection: Optional[Tuple[int, str]] = None # (connected_comp_id, point_id_on_comp)
     end_connection: Optional[Tuple[int, str]] = None   # (connected_comp_id, point_id_on_comp)
+    mid_point_distance: Optional[float] = None         # Distance from start for the mid connection point
+    mid_point_connection: Optional[Tuple[int, str]] = None # What the mid point connects TO (comp_id, point_id_on_comp)
+
+    # Pen position on this rod
+    pen_distance_from_start: Optional[float] = None
+
     selected: bool = False
     # Connections TO this rod FROM other components (keep for future use?)
     # connections: List[RodConnection] = field(default_factory=list)
@@ -88,44 +96,50 @@ class Wheel:
     diameter: float
     id: int # ID is now assigned externally
     speed_ratio: float = 1.0
-    # Define a single connection point via radius/phase
-    connection_radius: Optional[float] = None 
-    connection_phase_deg: Optional[float] = None # Degrees, 0 = North/Up, Clockwise
+    # Store multiple named connection points
+    connection_points: Dict[str, ConnectionPoint] = field(default_factory=dict)
+    current_angle_deg: float = 0.0 # Track the wheel's rotation
     selected: bool = False
     
     # --- Connection Point Calculation ---
-    # Define a constant ID for the single connection point
-    CONNECTION_POINT_ID = "cp0"
-    
-    def get_connection_point_position(self) -> Optional[QPointF]:
-        """Get the absolute position of the single connection point, if defined."""
-        if self.connection_radius is None or self.connection_phase_deg is None:
+    def get_connection_point_position(self, point_id: str) -> Optional[QPointF]:
+        """Get the absolute position of a specific connection point, considering wheel rotation."""
+        if point_id not in self.connection_points:
             return None
-        if self.connection_radius < 0:
+            
+        cp = self.connection_points[point_id]
+        radius = cp.radius
+        
+        if radius < 0:
             return None # Radius cannot be negative
             
-        # Convert phase angle (0=North, CW) to standard math angle (0=East, CCW) in radians
-        # Phase 0 (North) -> Math 90 deg
-        # Phase 90 (East) -> Math 0 deg
-        # Phase 180 (South) -> Math 270 deg (-90)
-        # Phase 270 (West) -> Math 180 deg
-        math_angle_deg = (90 - self.connection_phase_deg) % 360
-        math_angle_rad = math.radians(math_angle_deg)
+        # Assume 0 degrees rotation corresponds to the point being directly East (positive X)
+        # Add the wheel's current rotation angle
+        effective_angle_deg = self.current_angle_deg # For now, assume cp phase is 0
+        math_angle_rad = math.radians(effective_angle_deg)
         
         # Calculate offset from center
-        # Assuming Y increases downwards in the coordinate system
-        offset_x = self.connection_radius * math.cos(math_angle_rad)
-        offset_y = -self.connection_radius * math.sin(math_angle_rad) # Negative because Y increases down
+        # Standard math coordinates (X right, Y up)
+        offset_x = radius * math.cos(math_angle_rad)
+        offset_y = radius * math.sin(math_angle_rad) 
+        
+        # Adjust for QPointF coordinate system (Y down) if necessary
+        # If QPointF has Y increasing downwards, use: offset_y = -radius * math.sin(math_angle_rad)
+        # Assuming standard graphics coords for now (Y up)
         
         return QPointF(self.center.x() + offset_x, self.center.y() + offset_y)
 
+    # --- Add/Remove Connection Points ---
+    def add_connection_point(self, point_id: str, radius: float):
+        if radius >= 0:
+            self.connection_points[point_id] = ConnectionPoint(radius=radius, id=point_id)
+
+    def remove_connection_point(self, point_id: str):
+        if point_id in self.connection_points:
+            del self.connection_points[point_id]
+
     # --- Previous Methods (keep if needed, remove connection point list related) ---
-    # def add_connection_point(self, radius: float) -> str:
-    #     ... (remove)
-    # def remove_connection_point(self, point_id: str):
-    #     ... (remove)
-    # def get_connection_point_position(self, point_id: str) -> Optional[QPointF]:
-    #     ... (replace with above)
+    # ... (remove or comment out old single connection point logic if present) ...
     
     def contains_point(self, point: QPointF, tolerance: float = 5.0) -> bool:
         """Check if a point is within the wheel's area (with tolerance)"""

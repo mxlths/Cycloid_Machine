@@ -166,13 +166,14 @@ class DrawingCanvas(QWidget):
         painter.setBrush(QBrush(Qt.GlobalColor.black))
         painter.drawEllipse(screen_center, 4, 4)  # Made center point larger
         
-        # Draw connection point if defined
-        conn_pos = wheel.get_connection_point_position()
-        if conn_pos:
-            screen_conn_pos = self._canvas_to_screen(conn_pos)
-            painter.setPen(QPen(Qt.GlobalColor.red, 2))
-            painter.setBrush(QBrush(Qt.GlobalColor.red))
-            painter.drawEllipse(screen_conn_pos, 6, 6) # Draw connection point marker
+        # Draw connection points
+        painter.setPen(QPen(Qt.GlobalColor.red, 2))
+        painter.setBrush(QBrush(Qt.GlobalColor.red))
+        for point_id in wheel.connection_points: # Iterate through all points
+            conn_pos = wheel.get_connection_point_position(point_id)
+            if conn_pos:
+                screen_conn_pos = self._canvas_to_screen(conn_pos)
+                painter.drawEllipse(screen_conn_pos, 6, 6) # Draw connection point marker
         
     def _draw_rod(self, painter, rod: Rod):
         """Draw a single rod"""
@@ -203,6 +204,26 @@ class DrawingCanvas(QWidget):
         painter.setBrush(QBrush(end_color))
         painter.drawEllipse(end_screen, 4, 4)
         
+        # --- Draw Mid-point Marker ---
+        if rod.mid_point_distance is not None:
+            mid_pos_canvas = rod.get_point_at_distance(rod.mid_point_distance)
+            mid_pos_screen = self._canvas_to_screen(mid_pos_canvas)
+            painter.setPen(QPen(Qt.GlobalColor.darkGreen, 1))
+            painter.setBrush(QBrush(Qt.GlobalColor.green))
+            painter.drawEllipse(mid_pos_screen, 5, 5) # Slightly larger green circle
+            
+        # --- Draw Pen Marker ---
+        if rod.pen_distance_from_start is not None:
+            pen_pos_canvas = rod.get_point_at_distance(rod.pen_distance_from_start)
+            pen_pos_screen = self._canvas_to_screen(pen_pos_canvas)
+            painter.setPen(QPen(Qt.GlobalColor.magenta, 2))
+            # Draw a cross shape
+            size = 6
+            # Cast coordinates to int for drawLine(x1, y1, x2, y2)
+            x, y = int(pen_pos_screen.x()), int(pen_pos_screen.y())
+            painter.drawLine(x - size, y, x + size, y)
+            painter.drawLine(x, y - size, x, y + size)
+        
         # Draw hover connection indicator
         if self.hover_connection and rod.selected:
             painter.setPen(QPen(Qt.GlobalColor.green, 2))
@@ -230,6 +251,10 @@ class DrawingCanvas(QWidget):
         new_id = self._next_component_id
         self._next_component_id += 1
         wheel = Wheel(id=new_id, center=center, diameter=diameter)
+        # Automatically add a connection point 'p1' at the wheel's radius
+        wheel_radius = diameter / 2.0
+        wheel.add_connection_point('p1', wheel_radius)
+        
         self.wheels.append(wheel)
         self.components_by_id[new_id] = wheel # Add to lookup
         self.update() 
@@ -250,13 +275,14 @@ class DrawingCanvas(QWidget):
         
         # Check wheel connection points
         for wheel in self.wheels:
-            pos = wheel.get_connection_point_position()
-            if pos:
-                dist_sq = (canvas_point.x() - pos.x())**2 + (canvas_point.y() - pos.y())**2
-                if dist_sq < min_dist_sq:
-                    min_dist_sq = dist_sq
-                    # Return component ID, the standard point ID, and position
-                    nearest = ('wheel', wheel.id, wheel.CONNECTION_POINT_ID, pos) 
+            for point_id, cp in wheel.connection_points.items(): # Iterate through points
+                pos = wheel.get_connection_point_position(point_id)
+                if pos:
+                    dist_sq = (canvas_point.x() - pos.x())**2 + (canvas_point.y() - pos.y())**2
+                    if dist_sq < min_dist_sq:
+                        min_dist_sq = dist_sq
+                        # Return component ID, the specific point ID, and position
+                        nearest = ('wheel', wheel.id, point_id, pos) 
         
         # Check rod connection points (endpoints only for now)
         for rod in self.rods:
@@ -276,15 +302,15 @@ class DrawingCanvas(QWidget):
 
         # --- Remove old rod mid-point connection check ---
         # Check rod mid-point connection points (if any were implemented)
-        # for rod in self.rods:
-        #     for conn in rod.connections:
-        #         if isinstance(conn.distance_from_start, (int, float)):
-        #             pos = rod.get_point_at_distance(conn.distance_from_start)
-        #             dist_sq = (canvas_point.x() - pos.x())**2 + (canvas_point.y() - pos.y())**2
-        #             if dist_sq < min_dist_sq:
-        #                 min_dist_sq = dist_sq
-        #                 # TODO: Define how to identify these points (e.g., index?)
-        #                 # nearest = ('rod', rod, conn.distance_from_start, pos)
+        # Add check for actual mid-points
+        for rod in self.rods:
+            if rod.mid_point_distance is not None:
+                 pos_mid = rod.get_point_at_distance(rod.mid_point_distance)
+                 dist_sq_mid = (canvas_point.x() - pos_mid.x())**2 + (canvas_point.y() - pos_mid.y())**2
+                 if dist_sq_mid < min_dist_sq:
+                    min_dist_sq = dist_sq_mid
+                    # Return type, component ID, point ID ('mid'), and position
+                    nearest = ('rod_mid', rod.id, 'mid', pos_mid) 
         
         return nearest
 
@@ -389,13 +415,23 @@ class DrawingCanvas(QWidget):
             target_point = nearest[3] if nearest else snapped_point
             
             if isinstance(self.selected_component, Wheel):
+                # Remember original position to detect actual movement
+                original_pos = QPointF(self.selected_component.center)
                 self.selected_component.move_to(target_point)
-                # Propagate constraints after moving a wheel
-                new_pos = self.selected_component.get_connection_point_position()
-                initial_targets = {}
-                if new_pos:
-                    initial_targets[(self.selected_component.id, self.selected_component.CONNECTION_POINT_ID)] = new_pos
-                self._propagate_constraints(initial_targets)
+                
+                # Only propagate constraints if the wheel actually moved
+                if original_pos != self.selected_component.center:
+                    # Get new positions for ALL connection points on the moved wheel
+                    initial_targets = {}
+                    for point_id in self.selected_component.connection_points:
+                        new_pos = self.selected_component.get_connection_point_position(point_id)
+                        if new_pos:
+                            initial_targets[(self.selected_component.id, point_id)] = new_pos
+                    
+                    # If the wheel has connection points, propagate constraints
+                    if initial_targets:
+                        self._propagate_constraints(initial_targets)
+                
             elif isinstance(self.selected_component, Rod):
                 # Disconnect endpoint if moving a connected one
                 if self.dragging_point == 'start' and self.selected_component.start_connection:
@@ -406,17 +442,43 @@ class DrawingCanvas(QWidget):
                     self.selected_component.end_connection = None
                     
                 # Move the specific endpoint
+                original_start = QPointF(self.selected_component.start_pos)
+                original_end = QPointF(self.selected_component.end_pos)
                 moved_point_id = None
+                
                 if self.dragging_point == 'start':
                     self.selected_component.move_start_to(target_point)
                     moved_point_id = 'start'
                 elif self.dragging_point == 'end':
                     self.selected_component.move_end_to(target_point)
                     moved_point_id = 'end'
-                # Propagate constraints if an endpoint moved
-                if moved_point_id:
-                    moved_pos = self.selected_component.start_pos if moved_point_id == 'start' else self.selected_component.end_pos
-                    initial_targets = {(self.selected_component.id, moved_point_id): moved_pos}
+                
+                # Only propagate constraints if the rod actually moved
+                if moved_point_id and ((moved_point_id == 'start' and original_start != self.selected_component.start_pos) or 
+                                      (moved_point_id == 'end' and original_end != self.selected_component.end_pos)):
+                    
+                    # Prepare initial targets for constraint propagation
+                    initial_targets = {}
+                    
+                    # Add the moved endpoint
+                    if moved_point_id == 'start':
+                        initial_targets[(self.selected_component.id, 'start')] = self.selected_component.start_pos
+                    else:
+                        initial_targets[(self.selected_component.id, 'end')] = self.selected_component.end_pos
+                    
+                    # If this rod has a mid-point, add it to the targets
+                    if self.selected_component.mid_point_distance is not None:
+                        mid_pos = self.selected_component.get_point_at_distance(self.selected_component.mid_point_distance)
+                        initial_targets[(self.selected_component.id, 'mid')] = mid_pos
+                    
+                    # If this rod has a mid-point connection, mark it as "moved" to prioritize its constraints
+                    if self.selected_component.mid_point_connection is not None:
+                        moved_rod_ids.add(self.selected_component.id)
+                        if self.selected_component.id not in moved_point_types:
+                            moved_point_types[self.selected_component.id] = set()
+                        moved_point_types[self.selected_component.id].add('mid')
+                    
+                    # Propagate the constraints
                     self._propagate_constraints(initial_targets)
             
             self.hover_connection = nearest
@@ -621,30 +683,51 @@ class DrawingCanvas(QWidget):
         component_to_delete = self.selected_component
         component_id = component_to_delete.id # Get ID for message
 
-        # TODO: Handle breaking connections when deleting components
+        # --- Clear Connections Pointing TO the Deleted Component --- 
+        for rod in self.rods:
+            # Check if this rod is the one being deleted
+            if rod.id == component_id:
+                continue # Don't modify the rod we are about to delete
+                
+            # Clear connections if they point to the deleted component ID
+            if rod.start_connection and rod.start_connection[0] == component_id:
+                print(f"Clearing start connection of Rod {rod.id} (was connected to deleted {component_id})")
+                rod.start_connection = None
+            if rod.end_connection and rod.end_connection[0] == component_id:
+                print(f"Clearing end connection of Rod {rod.id} (was connected to deleted {component_id})")
+                rod.end_connection = None
+            if rod.mid_point_connection and rod.mid_point_connection[0] == component_id:
+                print(f"Clearing mid connection of Rod {rod.id} (was connected to deleted {component_id})")
+                rod.mid_point_connection = None
+        # --- End Connection Clearing --- 
 
+        # Remove from the correct list FIRST
         if isinstance(component_to_delete, Wheel):
-            self.wheels.remove(component_to_delete)
-            print(f"Deleted Wheel {component_id}")
+            if component_to_delete in self.wheels:
+                 self.wheels.remove(component_to_delete)
+                 print(f"Removed Wheel {component_id} from list")
+            else: 
+                 print(f"Warning: Wheel {component_id} not found in list for removal.")
         elif isinstance(component_to_delete, Rod):
-            self.rods.remove(component_to_delete)
-            print(f"Deleted Rod {component_id}")
+             if component_to_delete in self.rods:
+                 self.rods.remove(component_to_delete)
+                 print(f"Removed Rod {component_id} from list")
+             else:
+                 print(f"Warning: Rod {component_id} not found in list for removal.")
 
-        # Clear selection state
+        # Clear selection state AFTER removing connections
         self.selected_component = None
         self.dragging = False
         self.dragging_point = None
         self.component_selected.emit(None) # Notify panel to clear
         self.update() 
 
-        # Remove from lists and lookup
-        if isinstance(component_to_delete, Wheel):
-            self.wheels.remove(component_to_delete)
-        elif isinstance(component_to_delete, Rod):
-            self.rods.remove(component_to_delete)
-        del self.components_by_id[component_id] # Remove from lookup
-        
-        print(f"Deleted component {component_id}") # Adjusted print
+        # THEN remove from lookup dictionary
+        if component_id in self.components_by_id:
+             del self.components_by_id[component_id] 
+             print(f"Removed component {component_id} from lookup")
+        else:
+             print(f"Warning: Component {component_id} not found in lookup for deletion.")
 
     def _update_component_lookup(self):
         """Rebuild the component ID lookup dictionary."""
@@ -661,86 +744,223 @@ class DrawingCanvas(QWidget):
         """
         positions = {}
         for wheel in self.wheels:
-            pos = wheel.get_connection_point_position()
-            if pos:
-                positions[(wheel.id, wheel.CONNECTION_POINT_ID)] = pos
+            for point_id in wheel.connection_points:
+                pos = wheel.get_connection_point_position(point_id)
+                if pos:
+                    positions[(wheel.id, point_id)] = pos # Use the actual point_id
         # Add rod endpoints as potential connection targets
         for rod in self.rods:
             positions[(rod.id, 'start')] = rod.start_pos
             positions[(rod.id, 'end')] = rod.end_pos
+            # Add mid-point if it exists
+            if rod.mid_point_distance is not None:
+                mid_pos = rod.get_point_at_distance(rod.mid_point_distance)
+                positions[(rod.id, 'mid')] = mid_pos
         return positions
 
     def _propagate_constraints(self, initial_targets: Optional[Dict[Tuple[int, str], QPointF]] = None):
         """Iteratively updates rod positions based on connections.
            Starts with optional initial target positions for moved components.
         """
-        num_passes = 5 # Increased passes slightly for potentially complex manual moves
-        
-        # Get the current state of all connection points to check against
+        num_passes = 30  # Increased passes for potentially complex interactions
+
+        # Get the current state of all connection points
         target_positions = self._get_current_connection_point_positions()
         if initial_targets:
-            target_positions.update(initial_targets) # Update with manually moved points
-            
-        for _ in range(num_passes):
-            something_moved = False
+            target_positions.update(initial_targets)  # Update with manually moved points
+
+        for pass_num in range(num_passes):
+            something_moved_in_pass = False
+
+            # Process all rods in each pass
             for rod in self.rods:
-                original_start = QPointF(rod.start_pos) # Copy positions
+                original_start = QPointF(rod.start_pos)
                 original_end = QPointF(rod.end_pos)
-                
-                target_start_pos = None
-                if rod.start_connection:
-                    connected_key = rod.start_connection # (comp_id, point_id)
-                    if connected_key in target_positions:
-                        target_start_pos = target_positions[connected_key]
-                
-                target_end_pos = None
-                if rod.end_connection:
-                    connected_key = rod.end_connection
-                    if connected_key in target_positions:
-                        target_end_pos = target_positions[connected_key]
-                              
-                # Apply constraints (similar logic to _update_simulation)
-                moved_start = False
-                moved_end = False
-                if target_start_pos is not None and target_start_pos != rod.start_pos:
-                    rod.start_pos = target_start_pos
-                    # Adjust end_pos to maintain length
+                original_length = rod.length
+                # Ensure original_mid_dist is valid before calculations
+                original_mid_dist = max(0.0, min(original_length, rod.mid_point_distance if rod.mid_point_distance is not None else 0.0))
+
+                has_mid_connection = rod.mid_point_connection is not None
+                has_start_connection = rod.start_connection is not None
+                has_end_connection = rod.end_connection is not None
+
+                # Get target positions for THIS rod in THIS pass
+                target_start_pos = target_positions.get(rod.start_connection) if has_start_connection else None
+                target_end_pos = target_positions.get(rod.end_connection) if has_end_connection else None
+                target_mid_pos = target_positions.get(rod.mid_point_connection) if has_mid_connection else None
+
+                moved_this_iteration = False
+                # Initialize final positions to current ones
+                final_start_pos = QPointF(rod.start_pos)
+                final_end_pos = QPointF(rod.end_pos)
+                length_changed = False
+                mid_dist_changed = False # Track if mid-point distance itself was recalculated
+
+                # --- Determine Movement Logic ---
+                process_as_mid_point_constrained = False
+                if has_mid_connection and target_mid_pos is not None:
+                    # Check if the current mid-point is significantly different from the target
+                    current_mid_pos = rod.get_point_at_distance(original_mid_dist) # Use original proportion
+                    if (target_mid_pos - current_mid_pos).manhattanLength() > 1e-5:
+                        process_as_mid_point_constrained = True
+
+                # --- Apply Logic ---
+                if process_as_mid_point_constrained:
+                    # --- Priority 1: Handle Mid-point Connection Constraints ---
+                    start_is_fixed = target_start_pos is not None
+                    end_is_fixed = target_end_pos is not None
+
+                    if start_is_fixed and end_is_fixed:
+                        # Case 4: Both ends constrained - Rod MUST deform
+                        final_start_pos = target_start_pos
+                        final_end_pos = target_end_pos
+                        length_changed = True # Length determined by fixed ends
+
+                    elif start_is_fixed:
+                        # Case 2: Start fixed, End free - Pivot around start to meet mid-target
+                        final_start_pos = target_start_pos
+                        vec_S_TM = target_mid_pos - final_start_pos # Vector Start -> Target Mid
+                        len_S_TM = math.hypot(vec_S_TM.x(), vec_S_TM.y())
+
+                        # Check for valid original proportions
+                        if original_mid_dist > 1e-6 and original_length > 1e-6:
+                             # Calculate End position E = S + (M-S) * (L/d_sm)
+                             scale_factor = original_length / original_mid_dist
+                             final_end_pos = final_start_pos + vec_S_TM * scale_factor
+                        else: # Degenerate case (mid at start, or zero length)
+                            # Preserve original orientation if possible
+                            rod_angle = math.atan2(original_end.y() - original_start.y(), original_end.x() - original_start.x())
+                            final_end_pos = final_start_pos + QPointF(original_length * math.cos(rod_angle), original_length * math.sin(rod_angle))
+
+                    elif end_is_fixed:
+                        # Case 3: End fixed, Start free - Pivot around end to meet mid-target
+                        final_end_pos = target_end_pos
+                        vec_E_TM = target_mid_pos - final_end_pos # Vector End -> Target Mid
+                        len_E_TM = math.hypot(vec_E_TM.x(), vec_E_TM.y())
+                        original_dist_end_mid = original_length - original_mid_dist
+
+                        # Check for valid original proportions
+                        if original_dist_end_mid > 1e-6 and original_length > 1e-6:
+                            # Calculate Start position S = E + (M-E) * (L/d_em)
+                            scale_factor = original_length / original_dist_end_mid
+                            final_start_pos = final_end_pos + vec_E_TM * scale_factor
+                        else: # Degenerate case (mid at end, or zero length)
+                             # Preserve original orientation relative to end
+                             rod_angle = math.atan2(original_start.y() - original_end.y(), original_start.x() - original_end.x()) # Angle end->start
+                             final_start_pos = final_end_pos + QPointF(original_length * math.cos(rod_angle), original_length * math.sin(rod_angle))
+
+                    else:
+                        # Case 1: Only mid-point connected - Preserve length/orientation, translate
+                        rod_angle = math.atan2(original_end.y() - original_start.y(), original_end.x() - original_start.x())
+                        dist_mid_to_start = original_mid_dist # Use valid original proportion
+                        dist_mid_to_end = original_length - dist_mid_to_start
+                        final_start_pos = QPointF(target_mid_pos.x() - dist_mid_to_start * math.cos(rod_angle), target_mid_pos.y() - dist_mid_to_start * math.sin(rod_angle))
+                        final_end_pos = QPointF(target_mid_pos.x() + dist_mid_to_end * math.cos(rod_angle), target_mid_pos.y() + dist_mid_to_end * math.sin(rod_angle))
+
+                    # --- Apply calculated positions from mid-point logic ---
+                    if (final_start_pos - rod.start_pos).manhattanLength() > 1e-5 or \
+                       (final_end_pos - rod.end_pos).manhattanLength() > 1e-5:
+                        rod.start_pos = final_start_pos
+                        rod.end_pos = final_end_pos
+                        moved_this_iteration = True
+
+                    # --- Handle necessary deformation (Case 4 primarily) ---
+                    if length_changed:
+                        dx = rod.end_pos.x() - rod.start_pos.x()
+                        dy = rod.end_pos.y() - rod.start_pos.y()
+                        new_total_length = math.hypot(dx, dy)
+                        if abs(new_total_length - original_length) > 1e-4:
+                             rod.length = new_total_length # Update length
+                        else:
+                            length_changed = False # Mark as unchanged if difference is negligible
+
+                        if new_total_length > 1e-6:
+                             # Recalculate mid-point distance based on projection
+                             t = ((target_mid_pos.x() - rod.start_pos.x()) * dx +
+                                  (target_mid_pos.y() - rod.start_pos.y()) * dy) / (new_total_length**2)
+                             t = max(0.0, min(1.0, t)) # Clamp
+                             new_mid_dist = t * rod.length
+                             if abs(new_mid_dist - original_mid_dist) > 1e-4:
+                                 rod.mid_point_distance = new_mid_dist
+                                 mid_dist_changed = True
+                        else: # Rod collapsed
+                            rod.length = 0.0
+                            rod.mid_point_distance = 0.0
+                            mid_dist_changed = True
+
+                else:
+                    # --- Priority 2: Handle End Connections (No mid-point constraint active this iteration) ---
+                    local_move = False
+                    temp_start = QPointF(rod.start_pos) # Work with temps to avoid partial updates
+                    temp_end = QPointF(rod.end_pos)
+
+                    if target_start_pos is not None and target_end_pos is not None:
+                        # Both ends have targets - move to targets, length will adjust
+                        temp_start = target_start_pos
+                        temp_end = target_end_pos
+                        local_move = True # Will trigger length recalc below
+                        length_changed = True # Mark length as potentially changed
+
+                    elif target_start_pos is not None:
+                        # Start constrained, End free - Maintain original length
+                        temp_start = target_start_pos
+                        vec_start_to_end = temp_end - temp_start # Vector based on potentially moved start
+                        current_dist = math.hypot(vec_start_to_end.x(), vec_start_to_end.y())
+                        if current_dist > 1e-6 and original_length > 1e-6:
+                             scale = original_length / current_dist
+                             temp_end = temp_start + vec_start_to_end * scale
+                        local_move = True
+
+                    elif target_end_pos is not None:
+                         # End constrained, Start free - Maintain original length
+                         temp_end = target_end_pos
+                         vec_end_to_start = temp_start - temp_end # Vector based on potentially moved end
+                         current_dist = math.hypot(vec_end_to_start.x(), vec_end_to_start.y())
+                         if current_dist > 1e-6 and original_length > 1e-6:
+                             scale = original_length / current_dist
+                             temp_start = temp_end + vec_end_to_start * scale
+                         local_move = True
+
+                    # Apply changes from this block if any occurred
+                    if local_move:
+                         if (temp_start - rod.start_pos).manhattanLength() > 1e-5 or \
+                            (temp_end - rod.end_pos).manhattanLength() > 1e-5:
+                             rod.start_pos = temp_start
+                             rod.end_pos = temp_end
+                             moved_this_iteration = True
+
+
+                # --- Update target positions if rod moved AT ALL during this iteration ---
+                if moved_this_iteration:
+                    something_moved_in_pass = True
+
+                    # Recalculate length if it changed OR if moved by Priority 2 logic
                     dx = rod.end_pos.x() - rod.start_pos.x()
                     dy = rod.end_pos.y() - rod.start_pos.y()
-                    current_dist = math.sqrt(dx*dx + dy*dy)
-                    if current_dist > 1e-6: 
-                         scale = rod.length / current_dist
-                         rod.end_pos = QPointF(rod.start_pos.x() + dx * scale, rod.start_pos.y() + dy * scale)
-                    moved_start = True
-                         
-                # Check end connection *after* potential start adjustment
-                # Use the potentially updated target_positions if the connected component is another rod updated this pass
-                if rod.end_connection:
-                     connected_key = rod.end_connection
-                     if connected_key in target_positions:
-                           target_end_pos = target_positions[connected_key]
-                           
-                if target_end_pos is not None and target_end_pos != rod.end_pos:
-                    # Only adjust start if start wasn't the primary driver in this step
-                    if not moved_start:
-                        rod.end_pos = target_end_pos
-                        # Adjust start_pos to maintain length
-                        dx = rod.start_pos.x() - rod.end_pos.x()
-                        dy = rod.start_pos.y() - rod.end_pos.y()
-                        current_dist = math.sqrt(dx*dx + dy*dy)
-                        if current_dist > 1e-6:
-                             scale = rod.length / current_dist
-                             rod.start_pos = QPointF(rod.end_pos.x() + dx * scale, rod.end_pos.y() + dy * scale)
-                    moved_end = True
-                         
-                # Check if this rod moved and update target positions for next pass
-                if moved_start or moved_end:
-                    something_moved = True
+                    new_total_length = math.hypot(dx, dy)
+                    if abs(new_total_length - rod.length) > 1e-4:
+                         rod.length = new_total_length
+                         # If length changed, and mid-dist wasn't explicitly recalc'd (Case 4), update proportionally
+                         if not mid_dist_changed and original_length > 1e-6:
+                             proportion = original_mid_dist / original_length
+                             rod.mid_point_distance = rod.length * proportion
+                             mid_dist_changed = True # Mark as changed proportionally
+
+                    # Update target positions dictionary for the next iteration/pass
                     target_positions[(rod.id, 'start')] = rod.start_pos
                     target_positions[(rod.id, 'end')] = rod.end_pos
-                    
-            if not something_moved:
-                 break # Exit passes early if positions stabilized
+                    if rod.mid_point_distance is not None:
+                        # Final clamp for safety
+                        rod.mid_point_distance = max(0.0, min(rod.length, rod.mid_point_distance))
+                        mid_pos = rod.get_point_at_distance(rod.mid_point_distance)
+                        target_positions[(rod.id, 'mid')] = mid_pos
+
+            # Exit loop early if nothing moved this pass
+            if not something_moved_in_pass:
+                # print(f"Constraint propagation converged after {pass_num + 1} passes.")
+                break
+        # else: # If loop finished without break
+            # print(f"Constraint propagation reached max passes ({num_passes}).")
 
     # --- Simulation Control Methods --- 
     def start_simulation(self):
@@ -773,29 +993,38 @@ class DrawingCanvas(QWidget):
             return
 
         # --- 1. Update Driving Components (Wheels) --- 
-        master_angular_speed_deg_per_sec = 36.0 
+        master_angular_speed_deg_per_sec = 36.0 # TODO: Use master_speed from config
         angle_increment = master_angular_speed_deg_per_sec * self.simulation_time_step
-        # self.current_simulation_angle_deg = (self.current_simulation_angle_deg + angle_increment) % 360 # Angle only relevant if used elsewhere
+        self.current_simulation_angle_deg = (self.current_simulation_angle_deg + angle_increment) % 360 # Update global angle for reference
 
         initial_targets: Dict[Tuple[int, str], QPointF] = {} # Store new wheel positions
         
         for wheel in self.wheels:
+            # Update the wheel's internal angle
             wheel_angle_increment = angle_increment * wheel.speed_ratio
-            if wheel.connection_phase_deg is not None:
-                 wheel.connection_phase_deg = (wheel.connection_phase_deg + wheel_angle_increment) % 360
+            wheel.current_angle_deg = (wheel.current_angle_deg + wheel_angle_increment) % 360
             
-            new_pos = wheel.get_connection_point_position()
-            if new_pos:
-                initial_targets[(wheel.id, wheel.CONNECTION_POINT_ID)] = new_pos
+            # Calculate and store new positions for ALL connection points
+            for point_id in wheel.connection_points:
+                new_pos = wheel.get_connection_point_position(point_id)
+                if new_pos:
+                    initial_targets[(wheel.id, point_id)] = new_pos
         
         # --- 2. Update Constrained Components (Rods) using extracted method --- 
         self._propagate_constraints(initial_targets)
 
         # --- 3. Record Pen Path --- 
-        if self.pen_rod_id is not None and self.pen_rod_id in self.components_by_id:
-            pen_rod = self.components_by_id[self.pen_rod_id]
-            if isinstance(pen_rod, Rod):
-                pen_pos_canvas = pen_rod.end_pos if self.pen_point_type == 'end' else pen_rod.start_pos
+        # Find the actual pen rod
+        pen_rod: Optional[Rod] = None
+        for rod in self.rods:
+            if rod.pen_distance_from_start is not None:
+                pen_rod = rod
+                break # Found the pen rod
+        
+        if pen_rod is not None:
+            # Calculate the pen position along the rod
+            pen_pos_canvas = pen_rod.get_point_at_distance(pen_rod.pen_distance_from_start)
+            if pen_pos_canvas: # Ensure position calculation is valid
                 pen_pos_screen = self._canvas_to_screen(pen_pos_canvas)
                 # Add point if it's different from the last one to avoid duplicates
                 if self.pen_path_points.isEmpty() or self.pen_path_points.last() != pen_pos_screen:

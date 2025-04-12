@@ -1,0 +1,61 @@
+<?xml version="1.0" ?>
+<machine_configuration>
+    <global_settings>
+        <master_speed>1.0</master_speed>
+    </global_settings>
+    <canvas>
+        <center_position x="400" y="300"/>
+        <diameter>600</diameter>
+        <drawing_area>
+            <width>800</width>
+            <height>600</height>
+        </drawing_area>
+        <speed_control>
+            <base_ratio>0.0</base_ratio>
+        </speed_control>
+    </canvas>
+    <drive_wheels>
+        <wheel id="1">
+            <center_position x="196.0" y="245.0"/>
+            <diameter>250.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="100.0"/>
+            </connection_points>
+        </wheel>
+        <wheel id="2">
+            <center_position x="507.0" y="473.0"/>
+            <diameter>250.0</diameter>
+            <speed_control>
+                <base_ratio>-1.0</base_ratio>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="100.0"/>
+            </connection_points>
+        </wheel>
+    </drive_wheels>
+    <linkages>
+        <rod id="12">
+            <length>329.68839073599537</length>
+            <start_position x="296.0" y="245.0"/>
+            <end_position x="624.5423315432633" y="272.46582185565916"/>
+            <connections>
+                <start_point connected_to="wheel_1_point_p1"/>
+                <end_point connected_to="rod_12_end"/>
+            </connections>
+        </rod>
+        <rod id="13">
+            <length>367.5758425141674</length>
+            <start_position x="607.0" y="473.0"/>
+            <end_position x="641.0" y="107.0"/>
+            <connections>
+                <start_point connected_to="wheel_2_point_p1"/>
+                <end_point connected_to="rod_13_end"/>
+                <mid_point distance_from_start="201.3"/>
+            </connections>
+            <pen_position distance_from_start="375.0"/>
+        </rod>
+    </linkages>
+</machine_configuration>
