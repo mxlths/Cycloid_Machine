@@ -318,6 +318,23 @@ class ParameterPanel(QFrame):
         self.detail_widgets['end_y'] = end_y_spin
         self.details_layout.addRow("End Y:", end_y_spin)
 
+        # --- Start/End Connection Display ---
+        start_conn_label = QLabel("<Not Connected>")
+        start_conn_label.setWordWrap(True)
+        if rod.start_connection:
+            formatted_conn = _format_connection_target(rod.start_connection, components_dict)
+            start_conn_label.setText(formatted_conn if formatted_conn else "<Error>")
+        self.details_layout.addRow("Start Conn:", start_conn_label)
+        self.detail_widgets['start_conn_label'] = start_conn_label # Store label
+
+        end_conn_label = QLabel("<Not Connected>")
+        end_conn_label.setWordWrap(True)
+        if rod.end_connection:
+            formatted_conn = _format_connection_target(rod.end_connection, components_dict)
+            end_conn_label.setText(formatted_conn if formatted_conn else "<Error>")
+        self.details_layout.addRow("End Conn:", end_conn_label)
+        self.detail_widgets['end_conn_label'] = end_conn_label # Store label
+
         # --- Mid-point Connection ---
         self.has_mid_point_checkbox = QCheckBox()
         self.mid_dist_spin = QDoubleSpinBox()
