@@ -320,36 +320,42 @@ class ParameterPanel(QFrame):
 
         # --- Mid-point Connection ---
         self.has_mid_point_checkbox = QCheckBox()
-        self.details_layout.addRow("Has Mid-Point:", self.has_mid_point_checkbox)
-        
         self.mid_dist_spin = QDoubleSpinBox()
-        self.mid_dist_spin.setRange(0.0, 10000.0) # Distance along rod
+        self.mid_dist_spin.setRange(0.0, 10000.0) # Max length? Should update dynamically?
         self.mid_dist_spin.setDecimals(1)
-        self.mid_dist_spin.setEnabled(False) # Disabled by default
+        self.mid_dist_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         
-        mid_conn_label = QLabel("N/A") # Connection target remains read-only
+        mid_conn_label = QLabel("N/A") # Default text
+        mid_conn_label.setWordWrap(True) # Allow text wrapping
+        
+        if rod.mid_point_connection:
+            target_comp_id, target_point_id = rod.mid_point_connection
+            target_comp = components_dict.get(target_comp_id)
+            if target_comp:
+                comp_type_str = "Wheel" if isinstance(target_comp, Wheel) else "Rod"
+                mid_conn_label.setText(f"{comp_type_str} {target_comp_id} :: {target_point_id}")
+            else:
+                mid_conn_label.setText(f"Missing Comp {target_comp_id}")
         
         if rod.mid_point_distance is not None:
             self.has_mid_point_checkbox.setChecked(True)
             self.mid_dist_spin.setValue(rod.mid_point_distance)
-            self.mid_dist_spin.setEnabled(True) # Enable if distance exists
-            # Format mid_point_connection tuple into string if available
-            if rod.mid_point_connection:
-                formatted_conn = _format_connection_target(rod.mid_point_connection, components_dict)
-                mid_conn_label.setText(formatted_conn if formatted_conn else "Error")
-            else:
-                mid_conn_label.setText("<Not Connected>") # Indicate distance exists but no target
+            self.mid_dist_spin.setEnabled(True)
+            # Keep mid_conn_label visible if mid_point exists, even if not connected yet
         else:
              self.has_mid_point_checkbox.setChecked(False)
-             self.mid_dist_spin.setValue(0.0) # Default value when no mid-point
+             self.mid_dist_spin.setValue(0.0)
              self.mid_dist_spin.setEnabled(False)
-             mid_conn_label.setText("N/A")
-            
-        self.detail_widgets['has_mid_point'] = self.has_mid_point_checkbox # Store checkbox
-        self.detail_widgets['mid_point_distance'] = self.mid_dist_spin
-        self.details_layout.addRow("Mid Dist:", self.mid_dist_spin)
-        self.details_layout.addRow("Mid Conn:", mid_conn_label) # Keep label for connection
+             mid_conn_label.setText("N/A") # Explicitly set back to N/A if no mid-point
+        
+        self.detail_widgets['has_mid_point'] = self.has_mid_point_checkbox
+        self.detail_widgets['mid_dist_spin'] = self.mid_dist_spin 
+        self.detail_widgets['mid_conn_label'] = mid_conn_label # Store label if needed
 
+        self.details_layout.addRow("Has Mid-Point:", self.has_mid_point_checkbox)
+        self.details_layout.addRow("Mid Dist:", self.mid_dist_spin)
+        self.details_layout.addRow("Mid Conn:", mid_conn_label)
+        
         # --- Pen Position ---
         self.has_pen_checkbox = QCheckBox()
         self.pen_distance_spin = QDoubleSpinBox()
