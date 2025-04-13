@@ -191,6 +191,7 @@ class MainWindow(QMainWindow):
         
     def _on_component_selected(self, component: Optional[Union[Wheel, Rod]]):
         """Handle component selection changes from the canvas."""
+        print(f"DEBUG: MainWindow._on_component_selected called with: {component}")
         if component is None:
             # print("MainWindow received: No component selected") # Removed Debug
             self.parameter_panel.clear_details()
@@ -293,6 +294,21 @@ class MainWindow(QMainWindow):
                             # Update UI if clamped (requires getting the spinbox)
                             if 'mid_dist_spin' in self.parameter_panel.detail_widgets:
                                 self.parameter_panel.detail_widgets['mid_dist_spin'].setValue(component.mid_point_distance)
+                elif param_name == 'pen_distance_from_start':
+                    # Value can be float or None (though panel logic should handle None via checkbox)
+                    if new_value is None:
+                        component.pen_distance_from_start = None
+                    else:
+                        dist = float(new_value)
+                        # Clamp distance to be within rod length
+                        if 0 <= dist <= component.length:
+                            component.pen_distance_from_start = dist
+                        else:
+                            print(f"Warning: Pen distance {dist} clamped to rod length {component.length}.")
+                            component.pen_distance_from_start = max(0, min(dist, component.length))
+                            # Update UI if clamped
+                            if 'pen_distance_from_start' in self.parameter_panel.detail_widgets:
+                                self.parameter_panel.detail_widgets['pen_distance_from_start'].setValue(component.pen_distance_from_start)
             
             # After updating the component, refresh the canvas
             self.canvas.update()
@@ -305,25 +321,34 @@ class MainWindow(QMainWindow):
             # Optionally show error in status bar or dialog
             self.statusBar().showMessage(f"Error updating {param_name}: {e}", 3000) 
 
-    def _handle_pen_assignment(self, assigned_rod: Rod, is_pen_now: bool):
+    def _handle_pen_assignment(self, assigned_rod_id: int, is_pen_now: bool):
         """Handle the pen_assigned signal from ParameterPanel.
         Ensures only one rod has the pen at a time.
+        Accepts rod_id (int) from the signal.
         """
+        # Get the actual Rod object using the ID
+        assigned_rod = self.canvas.components_by_id.get(assigned_rod_id)
+        if not assigned_rod or not isinstance(assigned_rod, Rod):
+            print(f"ERROR: _handle_pen_assignment received invalid rod ID {assigned_rod_id}")
+            return
+            
         if is_pen_now:
             print(f"MainWindow: Rod {assigned_rod.id} assigned as pen carrier.")
             # Iterate through all rods on the canvas
-            for rod in self.canvas.rods:
-                # If this is NOT the rod that was just assigned the pen,
-                # and it currently has a pen, remove its pen status.
-                if rod.id != assigned_rod.id and rod.pen_distance_from_start is not None:
-                    print(f"MainWindow: Removing pen from previous carrier Rod {rod.id}.")
-                    rod.pen_distance_from_start = None
-                    # If this rod happens to be selected, refresh its panel display
-                    if self.canvas.selected_component == rod:
-                         self.parameter_panel.show_rod_details(rod)
+            for rod_id, component in self.canvas.components_by_id.items():
+                if isinstance(component, Rod):
+                    # If this is NOT the rod that was just assigned the pen,
+                    # and it currently has a pen, remove its pen status.
+                    if rod_id != assigned_rod_id and component.pen_distance_from_start is not None:
+                        print(f"MainWindow: Removing pen from previous carrier Rod {rod_id}.")
+                        component.pen_distance_from_start = None
+                        # If this rod happens to be selected, refresh its panel display
+                        if self.canvas.selected_component == component:
+                             self.parameter_panel.show_rod_details(component, self.canvas.components_by_id)
         else:
             # Pen was removed from assigned_rod, nothing else to do here
-            print(f"MainWindow: Pen removed from Rod {assigned_rod.id}.")
+            # The ParameterPanel._handle_pen_toggled already updated the model
+            print(f"MainWindow: Pen removed from Rod {assigned_rod.id}.") # Use looked-up assigned_rod here
 
     def _handle_open(self):
         """Handle the File -> Open... action."""
@@ -569,20 +594,6 @@ class MainWindow(QMainWindow):
         # For now, we'll just print a message.
         print("Adding new wheel...")
         # In a real application, you might want to call self.canvas.add_wheel() here.
-
-    def _on_component_selected(self, component: Optional[Union[Wheel, Rod]]):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when a component is selected, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Component selected: {component}")
-        # In a real application, you might want to call self.parameter_panel.show_wheel_details(component, self.canvas.components_by_id) here.
-
-    def _on_parameter_changed(self, component: Union[Wheel, Rod], param_name: str, new_value: object):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when a parameter is changed, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Parameter changed: Comp={type(component)}, Param='{param_name}', Value={new_value} (Type: {type(new_value)})")
-        # In a real application, you might want to call self.canvas.update() here to refresh the canvas.
 
     def _on_handle_pen_assignment(self, assigned_rod: Rod, is_pen_now: bool):
         # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
