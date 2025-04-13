@@ -102,33 +102,12 @@ class DrawingCanvas(QWidget):
         if self.pen_path_points: # Check if list is not empty
             painter.setPen(QPen(Qt.GlobalColor.darkCyan, 1)) # Pen color
             
-            transformed_path_points = []
-            if self.canvas_wheel:
-                # Transform points relative to the current canvas wheel position/angle
-                center = self.canvas_wheel.center
-                angle_deg = self.canvas_wheel.current_angle_deg
-                angle_rad = math.radians(angle_deg)
-                cos_a = math.cos(angle_rad)
-                sin_a = math.sin(angle_rad)
-                
-                for rel_point in self.pen_path_points:
-                    # Rotate forward
-                    abs_x_rotated = rel_point.x() * cos_a - rel_point.y() * sin_a
-                    abs_y_rotated = rel_point.x() * sin_a + rel_point.y() * cos_a
-                    # Translate to absolute canvas position
-                    abs_pos = QPointF(abs_x_rotated + center.x(), abs_y_rotated + center.y())
-                    # Convert to screen coordinates
-                    transformed_path_points.append(self._canvas_to_screen(abs_pos))
-            else:
-                # No canvas wheel, path is already absolute
-                for abs_pos in self.pen_path_points:
-                    transformed_path_points.append(self._canvas_to_screen(abs_pos))
+            # Convert absolute canvas points to screen points for drawing
+            screen_points_list = [self._canvas_to_screen(p) for p in self.pen_path_points if not (math.isnan(p.x()) or math.isnan(p.y()))] 
             
-            # Convert canvas points to screen points for drawing
-            # screen_points = QPolygonF([self._canvas_to_screen(p) for p in self.pen_path_points])
-            if transformed_path_points:
-                 screen_points = QPolygonF(transformed_path_points)
-                 painter.drawPolyline(screen_points)
+            if screen_points_list:
+                 screen_points_poly = QPolygonF(screen_points_list)
+                 painter.drawPolyline(screen_points_poly)
         
     def _screen_to_canvas(self, point: QPointF) -> QPointF:
         """Convert screen coordinates to canvas coordinates"""
@@ -1048,74 +1027,98 @@ class DrawingCanvas(QWidget):
         # if not self.simulation_running: return
         # ... (old logic) ...
 
-    def generate_image(self, filename: str, width_px: int, height_px: int, line_color: str = "black", line_width: int = 1):
-        """Generates an image of the pen path using Pillow, using the pre-calculated self.pen_path_points."""
+    def generate_image(self, filename: str, width_px: int, height_px: int, 
+                       line_color: str = "black", line_width: int = 1, 
+                       path_points: Optional[List[QPointF]] = None):
+        """Generates a PNG image of the calculated pen path.
         
-        # --- Use the pre-calculated path stored in the canvas --- 
-        path_to_draw = self.pen_path_points # <-- USE STORED PATH
+        Args:
+            filename (str): Path to save the PNG file.
+            width_px (int): Width of the output image in pixels.
+            height_px (int): Height of the output image in pixels.
+            line_color (str): Color of the path lines (e.g., '#FF0000', 'blue').
+            line_width (int): Width of the path lines in pixels.
+            path_points (Optional[List[QPointF]]): The list of path points to draw.
+                                                   If None, uses self.pen_path_points (for backwards compatibility or testing).
+                                                   Assumed to be relative to the canvas center if transformed, or absolute otherwise.
+        """
         
-        if not path_to_draw or len(path_to_draw) < 2:
-            print("No path data available (or path too short) to create image.")
-            # Optionally add a message to status bar?
-            # self.parent().statusBar().showMessage("Error: No path data to generate image.", 3000)
-            return False # Indicate failure
-
-        # --- Image Generation (using path_to_draw) --- 
-        print(f"Generating image from {len(path_to_draw)} stored points...") # <-- UPDATED PRINT
-        # 1. Calculate bounds of path_to_draw (these are relative coords if canvas_wheel exists)
-        min_x = min(p.x() for p in path_to_draw)
-        max_x = max(p.x() for p in path_to_draw)
-        min_y = min(p.y() for p in path_to_draw)
-        max_y = max(p.y() for p in path_to_draw)
-
-        path_width = max_x - min_x
-        path_height = max_y - min_y
-
-        # 2. Determine scale and offset 
-        # (This assumes path_to_draw is already relative to (0,0) if canvas exists)
-        padding = 0.05 
-        draw_area_width = width_px * (1 - 2 * padding)
-        draw_area_height = height_px * (1 - 2 * padding)
-        padding_x_px = width_px * padding
-        padding_y_px = height_px * padding
-
-        if path_width == 0 and path_height == 0:
-             scale = 1 
-        elif path_width == 0:
-             scale = draw_area_height / path_height if path_height > 0 else 1
-        elif path_height == 0:
-             scale = draw_area_width / path_width if path_width > 0 else 1
-        else:
-             scale = min(draw_area_width / path_width, draw_area_height / path_height)
+        points_to_draw = path_points if path_points is not None else self.pen_path_points
         
-        scaled_path_width = path_width * scale
-        scaled_path_height = path_height * scale
-        
-        offset_x = padding_x_px + (draw_area_width - scaled_path_width) / 2 - (min_x * scale)
-        offset_y = padding_y_px + (draw_area_height - scaled_path_height) / 2 - (min_y * scale)
-        
-        def transform(relative_point: QPointF) -> Tuple[int, int]:
-            px = int(relative_point.x() * scale + offset_x)
-            py = int(relative_point.y() * scale + offset_y)
-            return px, py
+        if not points_to_draw:
+            print("generate_image: No path points to draw.")
+            return False
 
-        # 3. Create PIL Image 
-        image = Image.new("RGB", (width_px, height_px), "white")
-        # 4. Create ImageDraw object
-        draw = ImageDraw.Draw(image)
-
-        # 5. Transform and draw lines 
-        transformed_points = [transform(p) for p in path_to_draw]
-        draw.line(transformed_points, fill=line_color, width=line_width, joint="curve")
-
-        # 6. Save image
         try:
-            image.save(filename)
-            print(f"Image successfully saved to {filename}")
-            return True # Indicate success
+            # Create a new blank image with white background
+            img = Image.new('RGB', (width_px, height_px), color = 'white')
+            draw = ImageDraw.Draw(img)
+
+            # --- Calculate bounding box and transform for the points_to_draw --- 
+            if not points_to_draw: # Should be caught above, but double check
+                return False
+                
+            # Find min/max coordinates IN THE PROVIDED LIST (relative or absolute)
+            min_x = min(p.x() for p in points_to_draw)
+            max_x = max(p.x() for p in points_to_draw)
+            min_y = min(p.y() for p in points_to_draw)
+            max_y = max(p.y() for p in points_to_draw)
+            
+            path_width = max_x - min_x
+            path_height = max_y - min_y
+            
+            # Handle zero size path (single point)
+            if path_width == 0 and path_height == 0:
+                center_x_img = width_px / 2
+                center_y_img = height_px / 2
+                draw.ellipse((center_x_img-2, center_y_img-2, center_x_img+2, center_y_img+2), fill=line_color)
+                img.save(filename)
+                return True
+            elif path_width == 0: path_width = 1 # Avoid division by zero
+            elif path_height == 0: path_height = 1
+                
+            # Determine scale factor to fit path within image (with padding)
+            padding_factor = 0.9 # Use 90% of the image dimension
+            scale_x = (width_px * padding_factor) / path_width
+            scale_y = (height_px * padding_factor) / path_height
+            scale_factor = min(scale_x, scale_y)
+            
+            # Calculate offset to center the scaled path in the image
+            # Center of the path data (using its own min/max)
+            center_x_data = (min_x + max_x) / 2.0
+            center_y_data = (min_y + max_y) / 2.0
+            # Target center in the image
+            center_x_img = width_px / 2.0
+            center_y_img = height_px / 2.0
+            
+            # Offset = ImageCenter - ScaledDataCenter
+            offset_x = center_x_img - (center_x_data * scale_factor)
+            offset_y = center_y_img - (center_y_data * scale_factor)
+            # --- End BBox and Transform Calc --- 
+
+            # --- Define Transform Function (closure) --- 
+            # This function now transforms the points from the input list's coordinate system
+            # (relative or absolute, depending on what was passed) to image pixel coordinates.
+            def transform(point: QPointF) -> Tuple[int, int]:
+                img_x = int((point.x() * scale_factor) + offset_x)
+                img_y = int((point.y() * scale_factor) + offset_y)
+                return img_x, img_y
+            # --- End Transform Function --- 
+
+            # Draw the path segments
+            if len(points_to_draw) > 1:
+                transformed_points = [transform(p) for p in points_to_draw]
+                draw.line(transformed_points, fill=line_color, width=line_width, joint="curve")
+                
+            # Save the image
+            img.save(filename)
+            return True
+
         except Exception as e:
-            print(f"Error saving image to {filename}: {e}")
-            return False # Indicate failure
+            print(f"Error generating image file {filename}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     def add_canvas_wheel(self, center: QPointF = QPointF(0,0), diameter: float = 500.0):
         """Adds a special wheel representing the canvas. Only one allowed."""

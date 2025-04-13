@@ -105,6 +105,11 @@ class MainWindow(QMainWindow):
         # File menu
         file_menu = menubar.addMenu('File')
         
+        # Add New action
+        new_action = QAction('New', self)
+        new_action.triggered.connect(self._handle_new)
+        file_menu.addAction(new_action)
+        
         open_action = QAction('Open...', self)
         # Connect open_action to handler
         open_action.triggered.connect(self._handle_open)
@@ -173,17 +178,22 @@ class MainWindow(QMainWindow):
         # For now, add a wheel at a default position with default size
         center = QPointF(200, 200)
         diameter = 100.0
+        print("DEBUG: _on_add_wheel called. Attempting to call self.canvas.add_wheel...") # <-- ADDED
         new_wheel = self.canvas.add_wheel(center, diameter)
+        print(f"DEBUG: self.canvas.add_wheel returned: {new_wheel}") # <-- ADDED
         
         if new_wheel:
+            print("DEBUG: Entered if new_wheel block in _on_add_wheel") # <-- Existing DEBUG PRINT
             # Select the newly added wheel
             self.canvas.selected_component = new_wheel
             new_wheel.selected = True
+            # Update status bar *BEFORE* emitting signal
+            self.statusBar().showMessage(f"Added new wheel (ID: {new_wheel.id})")
             # Emit signal from canvas to update parameter panel
             self.canvas.component_selected.emit(new_wheel)
             self.canvas.update()
-            self.statusBar().showMessage(f"Added new wheel (ID: {new_wheel.id})")
         else:
+             print("DEBUG: self.canvas.add_wheel returned falsy value. Skipping wheel setup.") # <-- ADDED
              self.statusBar().showMessage("Failed to add wheel.", 3000)
 
         self.canvas.setFocus()  # Ensure canvas has focus after adding wheel
@@ -445,31 +455,45 @@ class MainWindow(QMainWindow):
             # TODO: Show error dialog
             return False
             
-    def _clear_canvas(self):
-        """Clears all components from the drawing canvas."""
-        # Clear component lists
-        self.canvas.wheels.clear()
-        self.canvas.rods.clear()
-        self.canvas.components_by_id.clear()
-        self.canvas.pen_path_points.clear()
+    def _handle_new(self):
+        """Clears the current configuration and starts fresh."""
+        # Potentially ask user to save unsaved changes first
+        # TODO: Implement check for unsaved changes
         
-        # Reset selection and state
+        print("Handling New Configuration...")
+        self._clear_canvas()
+        self.current_config_path = None
+        self.setWindowTitle("Cycloid Machine Simulator - New Configuration")
+        self.statusBar().showMessage("New configuration started.", 2000)
+        
+    def _clear_canvas(self):
+        """Clears all components from the canvas and resets state."""
+        print("Clearing canvas...")
+        self.canvas.wheels = []
+        self.canvas.rods = []
+        self.canvas.components_by_id = {}
+        self.canvas._next_component_id = 1
         self.canvas.selected_component = None
         self.canvas.dragging = False
-        self.canvas.drag_start = None
-        self.canvas.hover_component = None
         self.canvas.dragging_point = None
-        self.canvas.hover_connection = None
         self.canvas.creating_rod = False
         self.canvas.rod_start_pos = None
+        self.canvas.hover_component = None
+        self.canvas.hover_connection = None
+        self.canvas.simulation_running = False
+        if self.canvas.simulation_timer.isActive():
+            self.canvas.simulation_timer.stop()
+        self.canvas.current_simulation_angle_deg = 0.0
+        self.canvas.pen_path_points = []
+        self.canvas.pen_rod_id = None
+        self.canvas.canvas_wheel = None # Explicitly clear canvas wheel
         
-        # Reset ID counter
-        self.canvas._next_component_id = 1
-        
-        # Update UI
-        self.canvas.update()
+        # Clear the parameter panel details
         self.parameter_panel.clear_details()
-        self.statusBar().showMessage("Canvas cleared", 2000) 
+        # TODO: Reset parameter panel settings fields (snap, etc.) if needed
+        
+        # Trigger a repaint
+        self.canvas.update()
 
     def _on_add_canvas(self):
         """Handle adding the special canvas wheel."""
@@ -509,9 +533,9 @@ class MainWindow(QMainWindow):
             # This case should ideally not happen if the check at the start works
             self.statusBar().showMessage("Failed to add canvas wheel.", 3000)
 
-    def _on_generate_image(self, filename: str, width: int, height: int, line_color: str, line_width: int):
+    def _on_generate_image(self, filename: str, width: int, height: int, line_color: str, line_width: int, duration_degrees: int):
         """Trigger the path calculation and image generation."""
-        print("Requesting path calculation from SymPy solver...")
+        print(f"Requesting path calculation from SymPy solver for {duration_degrees} degrees...") # <-- Updated print
         
         # Extract configuration from canvas
         all_wheels = self.canvas.wheels
@@ -545,8 +569,35 @@ class MainWindow(QMainWindow):
             return
 
         # Get calculation parameters (e.g., duration, steps - maybe from UI later?)
-        duration = 10.0 # Seconds
-        steps = 600    # Number of steps
+        # OLD: duration = 10.0 # Seconds
+        # OLD: steps = 600    # Number of steps
+        
+        # Convert duration from degrees to appropriate unit for sympy_solver (e.g., radians or time)
+        # Assuming the solver uses radians and the canvas wheel speed determines time:
+        canvas_wheel_speed_rad_per_sec = 1.0 # Placeholder - needs to be fetched or defined
+        if self.canvas.canvas_wheel and self.canvas.canvas_wheel.rotation_rate != 0:
+             # Assuming rotation_rate is in degrees/sec for consistency with panel?
+             canvas_wheel_speed_rad_per_sec = math.radians(self.canvas.canvas_wheel.rotation_rate)
+        elif self.canvas.canvas_wheel:
+            print("Warning: Canvas wheel rotation rate is zero. Assuming 1.0 rad/sec for duration calculation.")
+            # Keep default 1.0
+        else:
+            print("Warning: No canvas wheel found. Assuming 1.0 rad/sec for duration calculation.")
+            # Keep default 1.0
+
+        if canvas_wheel_speed_rad_per_sec == 0: # Avoid division by zero
+            print("Error: Cannot calculate duration with zero canvas wheel speed.")
+            self.statusBar().showMessage("Error: Canvas wheel speed cannot be zero.", 3000)
+            return
+            
+        total_angle_radians = math.radians(duration_degrees)
+        duration_seconds = abs(total_angle_radians / canvas_wheel_speed_rad_per_sec) # Use abs for safety
+
+        # Calculate steps based on duration (e.g., aim for a certain temporal resolution)
+        steps_per_second = 60 # Aim for 60 steps per second of simulation time
+        steps = max(60, int(duration_seconds * steps_per_second)) # Ensure a minimum number of steps
+
+        print(f"Calculated: duration={duration_seconds:.2f}s, steps={steps}") # <-- Debug print
 
         try:
             # Call the sympy solver
@@ -556,17 +607,27 @@ class MainWindow(QMainWindow):
                 canvas_wheel=canvas_wheel_obj, # Pass the identified canvas wheel
                 pen_rod_id=pen_rod_id,
                 pen_distance_from_start=pen_distance_from_start,
-                duration=duration,
-                steps=steps,
+                duration=duration_seconds, # Pass calculated duration in seconds
+                steps=steps, # Pass calculated steps
                 components_dict=components_dict
             )
             
-            # Store the calculated path in the canvas
+            # --- REMOVED TRANSFORMATION BLOCK --- 
+            # We want the final image to show the absolute path, same as the GUI preview.
+            # The generate_image function handles scaling and centering the absolute path.
+            # transformed_path_for_image = []
+            # if canvas_wheel_obj:
+            #     ...
+            # else:
+            #     ...
+            # --- 
+                    
+            # Store the UNTRANSFORMED (absolute) path in the canvas for GUI preview
             self.canvas.pen_path_points = calculated_path
             
-            # Generate the image using the canvas method (using its stored path)
-            print(f"Generating image from {len(calculated_path)} calculated points...")
-            success = self.canvas.generate_image(filename, width, height, line_color, line_width)
+            # Generate the image using the canvas method with the ABSOLUTE path
+            print(f"Generating image from {len(calculated_path)} absolute points...") # <-- Use calculated_path length
+            success = self.canvas.generate_image(filename, width, height, line_color, line_width, path_points=calculated_path) # <-- Pass calculated_path
             if success:
                 self.statusBar().showMessage(f"Image saved to {filename}", 5000)
             else:
@@ -579,192 +640,3 @@ class MainWindow(QMainWindow):
             # Print traceback for debugging
             import traceback
             traceback.print_exc()
-
-
-    def _on_start_simulation(self):
-        # This method is mentioned in the _on_generate_image method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when starting a simulation, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Starting simulation...")
-        # In a real application, you might want to call self.canvas.start_simulation() here.
-
-    def _on_add_wheel(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when adding a new wheel, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Adding new wheel...")
-        # In a real application, you might want to call self.canvas.add_wheel() here.
-
-    def _on_handle_pen_assignment(self, assigned_rod: Rod, is_pen_now: bool):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when a pen is assigned to a rod, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Pen assignment: Rod {assigned_rod.id}, is_pen_now={is_pen_now}")
-        # In a real application, you might want to call self.canvas.update() here to refresh the canvas.
-
-    def _on_handle_open(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when opening a file, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Opening file...")
-        # In a real application, you might want to call self.canvas.update() here to refresh the canvas.
-
-    def _on_handle_save(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when saving a file, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Saving file...")
-        # In a real application, you might want to call self._save_to_file(self.current_config_path) here.
-
-    def _on_handle_save_as(self, clear_after=True):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when saving a file as, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Handling save as: clear_after={clear_after}")
-        # In a real application, you might want to call self._handle_save_as(clear_after) here.
-
-    def _on_handle_clear_canvas(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when clearing the canvas, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Clearing canvas...")
-        # In a real application, you might want to call self._clear_canvas() here.
-
-    def _on_handle_save_to_file(self, file_path: str) -> bool:
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when saving to a file, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Saving to file: {file_path}")
-        # In a real application, you might want to call self._save_to_file(file_path) here.
-        return True
-
-    def _on_handle_event_filter(self, obj: QObject, event: QEvent) -> bool:
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when an event is filtered, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Event filtered: obj={obj}, event={event}")
-        # In a real application, you might want to call super(MainWindow, self).eventFilter(obj, event) here.
-        return False
-
-    def _on_handle_setup_menu_bar(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when setting up the menu bar, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Setting up menu bar...")
-        # In a real application, you might want to call self.menuBar() here to add menu items.
-
-    def _on_handle_connect_signals(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when connecting signals, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Connecting signals...")
-        # In a real application, you might want to call self._connect_signals() here.
-
-    def _on_handle_set_focus(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when setting focus, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Setting focus...")
-        # In a real application, you might want to call self.canvas.setFocus() here.
-
-    def _on_handle_install_event_filter(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when installing an event filter, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Installing event filter...")
-        # In a real application, you might want to call self.installEventFilter(self) here.
-
-    def _on_handle_event_filter_result(self, obj: QObject, event: QEvent) -> bool:
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when an event filter result is returned, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Event filter result: obj={obj}, event={event}")
-        # In a real application, you might want to call super(MainWindow, self).eventFilter(obj, event) here.
-        return False
-
-    def _on_handle_handle_pen_assignment(self, assigned_rod: Rod, is_pen_now: bool):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling a pen assignment, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Handling pen assignment: Rod {assigned_rod.id}, is_pen_now={is_pen_now}")
-        # In a real application, you might want to call self._handle_pen_assignment(assigned_rod, is_pen_now) here.
-
-    def _on_handle_handle_open(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling an open action, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Handling open...")
-        # In a real application, you might want to call self._handle_open() here.
-
-    def _on_handle_handle_save(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling a save action, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Handling save...")
-        # In a real application, you might want to call self._handle_save() here.
-
-    def _on_handle_handle_save_as(self, clear_after=True):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling a save as action, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Handling save as: clear_after={clear_after}")
-        # In a real application, you might want to call self._handle_save_as(clear_after) here.
-
-    def _on_handle_handle_clear_canvas(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling a clear canvas action, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Handling clear canvas...")
-        # In a real application, you might want to call self._clear_canvas() here.
-
-    def _on_handle_handle_save_to_file(self, file_path: str) -> bool:
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling a save to file action, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Handling save to file: {file_path}")
-        # In a real application, you might want to call self._save_to_file(file_path) here.
-        return True
-
-    def _on_handle_handle_event_filter(self, obj: QObject, event: QEvent) -> bool:
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling an event filter action, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Handling event filter: obj={obj}, event={event}")
-        # In a real application, you might want to call super(MainWindow, self).eventFilter(obj, event) here.
-        return False
-
-    def _on_handle_handle_setup_menu_bar(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling a setup menu bar action, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Handling setup menu bar...")
-        # In a real application, you might want to call self._setup_menu_bar() here.
-
-    def _on_handle_handle_connect_signals(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling a connect signals action, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Handling connect signals...")
-        # In a real application, you might want to call self._connect_signals() here.
-
-    def _on_handle_handle_set_focus(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling a set focus action, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Handling set focus...")
-        # In a real application, you might want to call self.canvas.setFocus() here.
-
-    def _on_handle_handle_install_event_filter(self):
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling an install event filter action, it should be implemented here.
-        # For now, we'll just print a message.
-        print("Handling install event filter...")
-        # In a real application, you might want to call self.installEventFilter(self) here.
-
-    def _on_handle_handle_event_filter_result(self, obj: QObject, event: QEvent) -> bool:
-        # This method is mentioned in the _connect_signals method but not implemented in the original file or the new code block.
-        # If this method is intended to be called when handling an event filter result action, it should be implemented here.
-        # For now, we'll just print a message.
-        print(f"Handling event filter result: obj={obj}, event={event}")
-        # In a real application, you might want to call super(MainWindow, self).eventFilter(obj, event) here.
-        return False 

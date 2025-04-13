@@ -199,7 +199,7 @@ def calculate_path_sympy(
             # We will need to extract the position of this point later
 
     # ---------------------------------------------------
-    # --- 3. Define Joints (Constraints) --------------
+    # --- 3. Define Constraints (Simplified) ----------
     # ---------------------------------------------------
     print("  Defining SymPy Joints...")
     constraints = [] # We'll store constraint equations here for nsolve
@@ -349,41 +349,14 @@ def calculate_path_sympy(
              solution_successful = False
              break
              
-        # Transform to canvas relative frame and store
-        point_to_store = pen_pos_abs_qpoint # Default to absolute QPointF
-        if canvas_wheel:
-            # --- DEBUG PRINTS --- 
-            if i < 5 or i % (steps // 10) == 0: # Print for first few steps and occasionally
-                print(f"    [t={current_t_val:.2f}] Canvas Transform: Rate={canvas_wheel.rotation_rate:.2f}, Center=({canvas_wheel.center.x():.1f}, {canvas_wheel.center.y():.1f})")
-            # --- END DEBUG --- 
-            center = canvas_wheel.center
-            # Calculate canvas angle based on direct time integration
-            angle_deg = canvas_wheel.rotation_rate * current_t_val 
-            angle_rad = -math.radians(angle_deg)
-            cos_a = math.cos(angle_rad)
-            sin_a = math.sin(angle_rad)
-            # Use the QPointF version for calculations with center
-            relative_pos = pen_pos_abs_qpoint - center 
-            rot_rel_x = relative_pos.x() * cos_a - relative_pos.y() * sin_a
-            rot_rel_y = relative_pos.x() * sin_a + relative_pos.y() * cos_a
-            # Overwrite point_to_store with the rotated QPointF
-            point_to_store = QPointF(rot_rel_x, rot_rel_y)
-            # --- DEBUG PRINTS --- 
-            if i < 5 or i % (steps // 10) == 0:
-                # Use the QPointF version for printing absolute position
-                print(f"        Abs=({pen_pos_abs_qpoint.x():.2f}, {pen_pos_abs_qpoint.y():.2f}), AngleDeg={angle_deg:.2f}, Rel=({relative_pos.x():.2f}, {relative_pos.y():.2f}), Rot=({point_to_store.x():.2f}, {point_to_store.y():.2f})")
-            # --- END DEBUG --- 
-        else:
-             # --- DEBUG PRINTS --- 
-             if i < 5 or i % (steps // 10) == 0:
-                 print(f"    [t={current_t_val:.2f}] No canvas wheel detected for transformation.")
-             # --- END DEBUG --- 
-                    
-        # Now point_to_store is guaranteed to be a QPointF
-        path_points.append(point_to_store)
+        # Append the absolute point calculated earlier
+        path_points.append(pen_pos_abs_qpoint)
 
     if not solution_successful:
         print("  WARNING: Solver failed. Path data might be incomplete or inaccurate.")
 
     print(f"SymPy calculation finished. Generated {len(path_points)} points.")
-    return path_points 
+    # Filter out NaN points before returning
+    valid_path_points = [p for p in path_points if not (math.isnan(p.x()) or math.isnan(p.y()))]
+    print(f"Returning {len(valid_path_points)} valid points.")
+    return valid_path_points 

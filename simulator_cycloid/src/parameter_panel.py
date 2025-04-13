@@ -55,7 +55,7 @@ class ParameterPanel(QFrame):
     parameter_changed = pyqtSignal(object, str, object) # component, param_name, value
     
     # Signal for image generation
-    image_generate_requested = pyqtSignal(str, int, int, str, int) # filename, w, h, color, line_width
+    image_generate_requested = pyqtSignal(str, int, int, str, int, int) # filename, w, h, color, line_width, duration_degrees
     # Signal to add canvas wheel
     add_canvas_requested = pyqtSignal()
     
@@ -166,6 +166,11 @@ class ParameterPanel(QFrame):
         self.image_height_spin.setRange(100, 8000)
         self.image_height_spin.setValue(1080)
         image_gen_form_layout.addRow("Height (px):", self.image_height_spin)
+        self.simulation_duration_spin = QSpinBox()
+        self.simulation_duration_spin.setRange(360, 360 * 100) # e.g., 1 to 100 rotations
+        self.simulation_duration_spin.setSingleStep(360)
+        self.simulation_duration_spin.setValue(360 * 5) # Default to 5 rotations
+        image_gen_form_layout.addRow("Duration (degrees):", self.simulation_duration_spin)
         self.image_line_width_spin = QSpinBox()
         self.image_line_width_spin.setRange(1, 20)
         self.image_line_width_spin.setValue(1)
@@ -646,15 +651,17 @@ class ParameterPanel(QFrame):
         filename = self.image_filename_edit.text()
         width = self.image_width_spin.value()
         height = self.image_height_spin.value()
+        line_color = "#0000FF" # Placeholder Blue
         line_width = self.image_line_width_spin.value()
-        line_color = "black" # Hardcoded for now
+        duration_degrees = self.simulation_duration_spin.value() # <-- Get duration
         
-        if filename:
-            self.image_generate_requested.emit(filename, width, height, line_color, line_width)
-        else:
-            print("Error: Please specify a filename for the image.")
-            # Optionally show a message box to the user
-        
+        if not filename:
+            # TODO: Show error message
+            print("Error: Filename cannot be empty.")
+            return
+            
+        self.image_generate_requested.emit(filename, width, height, line_color, line_width, duration_degrees) # <-- Emit with duration
+
     # --- Add Method for GroupBox Toggling --- 
     def _handle_section_toggled(self, checked):
         """Handles the toggled signal from checkable QGroupBox sections."""
