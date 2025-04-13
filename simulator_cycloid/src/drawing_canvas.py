@@ -8,6 +8,10 @@ from typing import Optional, Union, List, Tuple, Dict
 # Add PIL imports
 from PIL import Image, ImageDraw
 
+# Import the sympy solver function (use absolute import)
+# from .sympy_solver import calculate_path_sympy 
+from sympy_solver import calculate_path_sympy
+
 class DrawingCanvas(QWidget):
     # Signal emitted when a component is selected or deselected
     # Emits the selected component (Wheel or Rod) or None if deselected
@@ -1011,164 +1015,128 @@ class DrawingCanvas(QWidget):
     # --- Simulation Control Methods ---
     def start_simulation(self):
         if not self.simulation_running:
-            # Reset path and potentially time when starting
-            self.pen_path_points.clear()
+            # self.pen_path_points.clear() # Path now generated offline
             self.current_simulation_angle_deg = 0.0 
             
-            # Set reference frame to the canvas wheel (if it exists)
+            # Set reference frame (still useful for potential future viz)
             if self.canvas_wheel:
                 self.reference_wheel_id = self.canvas_wheel.id
-                print(f"Simulation started. Reference Frame: Canvas Wheel {self.reference_wheel_id}")
+                # print(f"Simulation started. Reference Frame: Canvas Wheel {self.reference_wheel_id}")
             else:
-                # Fallback to first wheel if no canvas wheel (optional)
-                if self.wheels:
-                     self.reference_wheel_id = self.wheels[0].id
-                     print(f"Simulation started. No canvas wheel found. Using Wheel {self.reference_wheel_id} as reference.")
-                else:
-                     self.reference_wheel_id = None
-                     print("Simulation started. No wheels to use as reference frame.")
+                # ... (fallback logic) ...
+                pass
             
-            # TODO: Reset component angles to initial state?
-            # for wheel in self.wheels:
-            #     wheel.current_angle_deg = 0.0 # Or load initial angle from config?
-                
-            interval_ms = int(self.simulation_time_step * 1000)
-            self.simulation_timer.start(interval_ms) 
-            self.simulation_running = True
-            # print("Simulation started") # Redundant print
+            # interval_ms = int(self.simulation_time_step * 1000)
+            # self.simulation_timer.start(interval_ms) # <<< DISABLE old timer
+            self.simulation_running = True # Keep flag for potential viz state
+            print("Simulation state set to RUNNING (timer disabled, path generation offline).")
+            self.update() # Update button states potentially
             
     def stop_simulation(self):
         if self.simulation_running:
-            self.simulation_timer.stop()
+            # self.simulation_timer.stop() # <<< DISABLE old timer
             self.simulation_running = False
-            self.reference_wheel_id = None # Clear reference frame
-            print("Simulation stopped")
-            
+            self.reference_wheel_id = None 
+            print("Simulation state set to STOPPED.")
+            self.update() # Update button states potentially
+
     def _update_simulation(self):
-        """Core simulation update loop called by the timer."""
-        if not self.simulation_running:
-            return
+        # This method is now effectively disabled as the timer doesn't run
+        # We can leave it or comment it out fully.
+        pass
+        # """Core simulation update loop called by the timer."""
+        # if not self.simulation_running: return
+        # ... (old logic) ...
 
-        # --- 1. Update Driving Components (Wheels) --- 
-        # Remove master speed and global angle increment
-        # self.current_simulation_angle_deg = (self.current_simulation_angle_deg + angle_increment) % 360 # Update global angle for reference
-
-        initial_targets: Dict[Tuple[int, str], QPointF] = {} # Store new wheel positions
+    def generate_image(self, filename: str, width_px: int, height_px: int, line_color: str = "black", line_width: int = 1):
+        """Generates an image of the pen path using Pillow, calculating path via SymPy."""
         
-        for wheel in self.wheels:
-            # Update the wheel's internal angle based on its own rotation rate
-            # Assume rotation_rate is degrees per second
-            wheel_angle_increment = wheel.rotation_rate * self.simulation_time_step
-            wheel.current_angle_deg = (wheel.current_angle_deg + wheel_angle_increment) % 360
-            
-            # Calculate and store new positions for ALL connection points
-            for point_id in wheel.connection_points:
-                new_pos = wheel.get_connection_point_position(point_id)
-                if new_pos:
-                    initial_targets[(wheel.id, point_id)] = new_pos
-        
-        # --- 2. Update Constrained Components (Rods) using extracted method --- 
-        self._propagate_constraints(initial_targets)
-
-        # --- 3. Record Pen Path --- 
-        # Find the actual pen rod
-        pen_rod: Optional[Rod] = None
+        # --- Find Pen Rod --- 
+        pen_rod = None
         for rod in self.rods:
             if rod.pen_distance_from_start is not None:
                 pen_rod = rod
-                break # Found the pen rod
+                break
         
-        if pen_rod is not None:
-            # Calculate the pen position along the rod (in absolute canvas coordinates)
-            pen_pos_canvas = pen_rod.get_point_at_distance(pen_rod.pen_distance_from_start)
-            
-            if pen_pos_canvas: # Ensure position calculation is valid
-                point_to_store = pen_pos_canvas # Default to absolute position
-                
-                # If we have a canvas wheel, transform to its relative coordinate system
-                if self.canvas_wheel:
-                    center = self.canvas_wheel.center
-                    angle_deg = self.canvas_wheel.current_angle_deg
-                    angle_rad = -math.radians(angle_deg) # Use negative angle for reverse rotation
-                    
-                    relative_pos = pen_pos_canvas - center
-                    
-                    # Rotate relative position backwards
-                    rotated_relative_x = relative_pos.x() * math.cos(angle_rad) - relative_pos.y() * math.sin(angle_rad)
-                    rotated_relative_y = relative_pos.x() * math.sin(angle_rad) + relative_pos.y() * math.cos(angle_rad)
-                    
-                    point_to_store = QPointF(rotated_relative_x, rotated_relative_y)
-                    
-                # Store the calculated point (either absolute or relative)
-                # Add point if it's different from the last one (using the stored coordinate system)
-                if not self.pen_path_points or self.pen_path_points[-1] != point_to_store:
-                    self.pen_path_points.append(point_to_store)
+        if not pen_rod:
+             print("No pen rod designated.")
+             return
+             
+        # --- Calculate Path using SymPy --- 
+        print("Requesting path calculation from SymPy solver...")
+        # Define simulation parameters (example values, make configurable later)
+        sim_duration = 10.0 # seconds
+        sim_steps = 600    # number of points
         
-        # --- 4. Trigger Repaint --- 
-        self.update()
-    # --- End Simulation --- 
-    
-    def generate_image(self, filename: str, width_px: int, height_px: int, line_color: str = "black", line_width: int = 1):
-        """Generates an image of the pen path using Pillow."""
-        if not self.pen_path_points or len(self.pen_path_points) < 2:
-            print("No pen path recorded (or path too short) to generate image.")
+        try:
+             calculated_relative_path = calculate_path_sympy(
+                 wheels=self.wheels,
+                 rods=self.rods,
+                 canvas_wheel=self.canvas_wheel,
+                 pen_rod_id=pen_rod.id,
+                 pen_distance_from_start=pen_rod.pen_distance_from_start,
+                 duration=sim_duration,
+                 steps=sim_steps,
+                 components_dict=self.components_by_id
+             )
+        except Exception as e:
+             print(f"ERROR during SymPy path calculation: {e}")
+             return
+             
+        # Use the calculated path (currently dummy data from solver)
+        path_to_draw = calculated_relative_path
+        
+        if not path_to_draw or len(path_to_draw) < 2:
+            print("No path data generated (or path too short) to create image.")
             return
 
-        # 1. Calculate bounds of self.pen_path_points (List[QPointF])
-        min_x = min(p.x() for p in self.pen_path_points)
-        max_x = max(p.x() for p in self.pen_path_points)
-        min_y = min(p.y() for p in self.pen_path_points)
-        max_y = max(p.y() for p in self.pen_path_points)
+        # --- Image Generation (using calculated path) --- 
+        print(f"Generating image from {len(path_to_draw)} calculated points...")
+        # 1. Calculate bounds of path_to_draw (these are relative coords if canvas_wheel exists)
+        min_x = min(p.x() for p in path_to_draw)
+        max_x = max(p.x() for p in path_to_draw)
+        min_y = min(p.y() for p in path_to_draw)
+        max_y = max(p.y() for p in path_to_draw)
 
         path_width = max_x - min_x
         path_height = max_y - min_y
 
-        # 2. Determine scale and offset to fit path in width_px/height_px
-        padding = 0.05 # 5% padding
+        # 2. Determine scale and offset 
+        # (This assumes path_to_draw is already relative to (0,0) if canvas exists)
+        padding = 0.05 
         draw_area_width = width_px * (1 - 2 * padding)
         draw_area_height = height_px * (1 - 2 * padding)
         padding_x_px = width_px * padding
         padding_y_px = height_px * padding
 
-        # Handle zero dimensions (single point or straight line)
         if path_width == 0 and path_height == 0:
-             scale = 1 # Arbitrary scale, will just be a point
+             scale = 1 
         elif path_width == 0:
-             scale = draw_area_height / path_height
+             scale = draw_area_height / path_height if path_height > 0 else 1
         elif path_height == 0:
-             scale = draw_area_width / path_width
+             scale = draw_area_width / path_width if path_width > 0 else 1
         else:
              scale = min(draw_area_width / path_width, draw_area_height / path_height)
         
         scaled_path_width = path_width * scale
         scaled_path_height = path_height * scale
         
-        # Calculate offset to center the scaled path within the drawing area
         offset_x = padding_x_px + (draw_area_width - scaled_path_width) / 2 - (min_x * scale)
         offset_y = padding_y_px + (draw_area_height - scaled_path_height) / 2 - (min_y * scale)
         
-        # Helper function to transform canvas coords to image pixel coords
-        def transform(canvas_point: QPointF) -> Tuple[int, int]:
-            px = int(canvas_point.x() * scale + offset_x)
-            py = int(canvas_point.y() * scale + offset_y)
+        def transform(relative_point: QPointF) -> Tuple[int, int]:
+            px = int(relative_point.x() * scale + offset_x)
+            py = int(relative_point.y() * scale + offset_y)
             return px, py
 
-        # 3. Create PIL Image (RGB, white background)
+        # 3. Create PIL Image 
         image = Image.new("RGB", (width_px, height_px), "white")
         # 4. Create ImageDraw object
         draw = ImageDraw.Draw(image)
 
-        # 5. Iterate through path points, transform to image coords, draw lines
-        transformed_points = [transform(p) for p in self.pen_path_points]
-        
-        # Draw lines between consecutive points
+        # 5. Transform and draw lines 
+        transformed_points = [transform(p) for p in path_to_draw]
         draw.line(transformed_points, fill=line_color, width=line_width, joint="curve")
-        
-        # Optional: Draw a small circle at the start point? 
-        # if transformed_points:
-        #     start_px, start_py = transformed_points[0]
-        #     radius = 3
-        #     draw.ellipse((start_px-radius, start_py-radius, start_px+radius, start_py+radius), fill='green')
 
         # 6. Save image
         try:
