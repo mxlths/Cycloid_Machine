@@ -49,6 +49,7 @@ class RodConfig:
     id: int
     length: float
     start_connection: RodConnectionConfig
+    fixed_length: bool = True
     end_connection: Optional[RodConnectionConfig] = None
     mid_connection: Optional[RodConnectionConfig] = None
     mid_distance_from_start: Optional[float] = None
@@ -203,6 +204,10 @@ def load_config_from_xml(file_path: str) -> MachineConfig:
             rod_id = int(rod_id_str)
             
             length = float(rod_elem.findtext('length', '100'))
+            # Load fixed_length attribute
+            fixed_len_str = rod_elem.get('fixed_length', 'true')
+            fixed_length = fixed_len_str.lower() == 'true'
+            
             pen_pos_elem = rod_elem.find('pen_position')
             pen_distance = float(pen_pos_elem.get('distance_from_start')) if pen_pos_elem is not None and pen_pos_elem.get('distance_from_start') is not None else None
 
@@ -259,6 +264,7 @@ def load_config_from_xml(file_path: str) -> MachineConfig:
                 id=rod_id,
                 length=length,
                 start_connection=start_conn_conf, 
+                fixed_length=fixed_length,
                 end_connection=end_conn_conf,    
                 mid_connection=mid_conn_conf,    
                 mid_distance_from_start=mid_dist, 
@@ -433,7 +439,8 @@ def populate_canvas_from_config(canvas: DrawingCanvas, config: MachineConfig):
             start_pos=QPointF(start_x, start_y),
             end_pos=QPointF(end_x, end_y),
             pen_distance_from_start=rod_config.pen_distance_from_start,
-            mid_point_distance=rod_config.mid_distance_from_start
+            mid_point_distance=rod_config.mid_distance_from_start,
+            fixed_length=rod_config.fixed_length
             # Connections will be set below
         )
         

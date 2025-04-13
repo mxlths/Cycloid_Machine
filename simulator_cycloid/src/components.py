@@ -19,10 +19,11 @@ class RodConnection:
 
 @dataclass
 class Rod:
+    id: int
     length: float
-    start_pos: QPointF  # Current position of start point
-    end_pos: QPointF    # Current position of end point
-    id: int # ID is now assigned externally
+    start_pos: QPointF    # Current position of start point
+    end_pos: QPointF      # Current position of end point
+    fixed_length: bool = True # <-- ADDED HERE
     # Connections FROM this rod's points TO other components
     start_connection: Optional[Tuple[int, str]] = None # (connected_comp_id, point_id_on_comp)
     end_connection: Optional[Tuple[int, str]] = None   # (connected_comp_id, point_id_on_comp)

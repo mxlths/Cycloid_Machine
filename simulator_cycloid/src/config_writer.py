@@ -90,6 +90,8 @@ def generate_xml_tree(wheels: List[Wheel], rods: List[Rod], components_dict) -> 
         for rod in rods:
             rod_elem = _add_sub_element(linkages, 'rod', attrib={'id': str(rod.id)})
             _add_sub_element(rod_elem, 'length', str(rod.length))
+            # Add fixed_length attribute
+            rod_elem.set('fixed_length', str(rod.fixed_length).lower())
             
             # Save actual rod position coordinates
             start_pos_elem = _add_sub_element(rod_elem, 'start_position', attrib={

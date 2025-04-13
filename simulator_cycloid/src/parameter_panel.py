@@ -436,6 +436,13 @@ class ParameterPanel(QFrame):
             self.detail_widgets['end_y'] = end_y_spin
             self.details_layout.addRow("End Y:", end_y_spin)
 
+            # Add Fixed Length checkbox
+            fixed_len_check = QCheckBox()
+            fixed_len_check.setChecked(rod.fixed_length)
+            fixed_len_check.toggled.connect(partial(self._handle_value_changed, rod, 'fixed_length'))
+            self.detail_widgets['fixed_length'] = fixed_len_check
+            self.details_layout.addRow("Fixed Length:", fixed_len_check)
+
             # Start/End Connection Display 
             start_conn_label = QLabel("<Not Connected>")
             start_conn_label.setWordWrap(True)

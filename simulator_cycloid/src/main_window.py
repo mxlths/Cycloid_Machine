@@ -319,6 +319,8 @@ class MainWindow(QMainWindow):
                             # Update UI if clamped
                             if 'pen_distance_from_start' in self.parameter_panel.detail_widgets:
                                 self.parameter_panel.detail_widgets['pen_distance_from_start'].setValue(component.pen_distance_from_start)
+                elif param_name == 'fixed_length':
+                    component.fixed_length = bool(new_value)
             
             # After updating the component, refresh the canvas
             self.canvas.update()

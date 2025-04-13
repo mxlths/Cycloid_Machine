@@ -25,6 +25,9 @@ class DrawingCanvas(QWidget):
         # Combine StrongFocus (keyboard) and WheelFocus (mouse wheel)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus | Qt.FocusPolicy.WheelFocus)
         
+        # Add flag for rod endpoint drag state
+        self.dragging_endpoint_was_connected = False
+        
         # Scale settings
         self.pixels_per_mm = 2  # Changed from 1 to 2 for double size
         
@@ -373,12 +376,16 @@ class DrawingCanvas(QWidget):
                     self.dragging = True
                     self.dragging_point = 'start'
                     self.drag_start = canvas_point
+                    # Store initial connection state for the dragged endpoint
+                    self.dragging_endpoint_was_connected = rod.start_connection is not None 
                     break # Found component
                 elif self._is_near_rod_endpoint(rod, canvas_point, 'end'):
                     newly_selected_component = rod # Mark for selection
                     self.dragging = True
                     self.dragging_point = 'end'
                     self.drag_start = canvas_point
+                    # Store initial connection state for the dragged endpoint
+                    self.dragging_endpoint_was_connected = rod.end_connection is not None 
                     break # Found component
             
             # Check for wheel selection (only if rod not selected)
@@ -453,13 +460,22 @@ class DrawingCanvas(QWidget):
                         self._propagate_constraints(initial_targets)
                 
             elif isinstance(self.selected_component, Rod):
-                # Disconnect endpoint if moving a connected one
-                if self.dragging_point == 'start' and self.selected_component.start_connection:
-                    print(f"Rod {self.selected_component.id} start disconnected by dragging.")
-                    self.selected_component.start_connection = None
-                elif self.dragging_point == 'end' and self.selected_component.end_connection:
-                    print(f"Rod {self.selected_component.id} end disconnected by dragging.")
-                    self.selected_component.end_connection = None
+                # --- Modified Disconnect Logic ---
+                # Only disconnect if the endpoint *was* connected when the drag started
+                if self.dragging_endpoint_was_connected: 
+                    if self.dragging_point == 'start':
+                        # Check if still connected (might be redundant but safe)
+                        if self.selected_component.start_connection:
+                            print(f"Rod {self.selected_component.id} start disconnected by dragging (was initially connected).")
+                            self.selected_component.start_connection = None
+                    elif self.dragging_point == 'end':
+                        # Check if still connected
+                        if self.selected_component.end_connection:
+                            print(f"Rod {self.selected_component.id} end disconnected by dragging (was initially connected).")
+                            self.selected_component.end_connection = None
+                    # Reset flag after the first potential disconnect event during this drag
+                    self.dragging_endpoint_was_connected = False 
+                # --- End Modified Disconnect Logic ---
                     
                 # Move the specific endpoint
                 original_start = QPointF(self.selected_component.start_pos)
@@ -838,7 +854,7 @@ class DrawingCanvas(QWidget):
             # Use targets derived from the beginning of this pass
             # Apply external initial_targets only on the very first pass
             target_positions_this_pass = current_positions.copy()
-            if initial_targets and pass_num == 0:
+            if initial_targets:
                 target_positions_this_pass.update(initial_targets)
 
             # Store intended moves calculated during this pass
@@ -849,6 +865,7 @@ class DrawingCanvas(QWidget):
             # --- Step 2: Calculate Endpoint Adjustments (Phase 1 Logic) ---
             if DEBUG_CONSTRAINTS: print("  Calculating Endpoint Adjustments...")
             for rod in self.rods:
+                is_fixed_length = rod.fixed_length
                 current_start, current_end = intended_rod_positions[rod.id] # Use potentially adjusted pos from previous step in THIS pass? No, use start-of-pass state
                 current_start = QPointF(rod.start_pos)
                 current_end = QPointF(rod.end_pos)
@@ -865,30 +882,44 @@ class DrawingCanvas(QWidget):
                 intended_start = QPointF(current_start)
                 intended_end = QPointF(current_end)
                 
-                if target_start is not None and target_end is not None:
+                if target_start is not None and target_end is not None: # Both ends connected
                     # Both ends targeted: Prioritize start, maintain length
-                    intended_start = target_start
-                    vec_S_TE = target_end - intended_start
-                    dist = math.hypot(vec_S_TE.x(), vec_S_TE.y())
-                    if dist > 1e-6 and original_length > 1e-6:
-                        intended_end = intended_start + vec_S_TE * (original_length / dist)
-                    else: intended_end = intended_start
-                elif target_start is not None:
+                    if is_fixed_length:
+                        intended_start = target_start
+                        vec_S_TE = target_end - intended_start
+                        dist = math.hypot(vec_S_TE.x(), vec_S_TE.y())
+                        if dist > 1e-6 and original_length > 1e-6:
+                            intended_end = intended_start + vec_S_TE * (original_length / dist)
+                        else: intended_end = intended_start # Degenerate case
+                    else: # Not fixed length - allow stretching
+                        intended_start = target_start
+                        intended_end = target_end
+                elif target_start is not None: # Only start connected
                     # Start targeted: Move start, calculate end maintaining length
-                    intended_start = target_start
-                    vec_S_E = current_end - intended_start
-                    dist = math.hypot(vec_S_E.x(), vec_S_E.y())
-                    if dist > 1e-6 and original_length > 1e-6:
-                        intended_end = intended_start + vec_S_E * (original_length / dist)
-                    else: intended_end = intended_start
-                elif target_end is not None:
+                    if is_fixed_length:
+                        intended_start = target_start
+                        vec_S_E = current_end - intended_start # Vector FROM new start TO old end
+                        dist = math.hypot(vec_S_E.x(), vec_S_E.y())
+                        if dist > 1e-6 and original_length > 1e-6:
+                            # Maintain original length and direction relative to the new start
+                            intended_end = intended_start + vec_S_E * (original_length / dist)
+                        else: intended_end = intended_start # Degenerate case
+                    else: # Not fixed length - only move the connected end
+                        intended_start = target_start
+                        # intended_end remains current_end (unmodified)
+                elif target_end is not None: # Only end connected
                     # End targeted: Move end, calculate start maintaining length
-                    intended_end = target_end
-                    vec_E_S = current_start - intended_end
-                    dist = math.hypot(vec_E_S.x(), vec_E_S.y())
-                    if dist > 1e-6 and original_length > 1e-6:
-                        intended_start = intended_end + vec_E_S * (original_length / dist)
-                    else: intended_start = intended_end
+                    if is_fixed_length:
+                        intended_end = target_end
+                        vec_E_S = current_start - intended_end # Vector FROM new end TO old start
+                        dist = math.hypot(vec_E_S.x(), vec_E_S.y())
+                        if dist > 1e-6 and original_length > 1e-6:
+                            # Maintain original length and direction relative to the new end
+                            intended_start = intended_end + vec_E_S * (original_length / dist)
+                        else: intended_start = intended_end # Degenerate case
+                    else: # Not fixed length - only move the connected end
+                        intended_end = target_end
+                        # intended_start remains current_start (unmodified)
                 
                 # Store calculated positions for this rod
                 intended_rod_positions[rod.id] = (intended_start, intended_end)
@@ -969,6 +1000,7 @@ class DrawingCanvas(QWidget):
             # --- Step 4: Apply all calculated moves for this pass ---
             if DEBUG_CONSTRAINTS: print("  Applying Calculated Moves...")
             something_moved_in_pass = False
+            updated_lengths: Dict[int, float] = {} # Store new lengths for non-fixed rods
             for rod in self.rods:
                 intended_start, intended_end = intended_rod_positions[rod.id]
                 
@@ -977,8 +1009,34 @@ class DrawingCanvas(QWidget):
                    (intended_end - rod.end_pos).manhattanLength() > 1e-5:
                     rod.start_pos = intended_start
                     rod.end_pos = intended_end
+                    
+                    # If length isn't fixed, recalculate and store it
+                    if not rod.fixed_length:
+                        dx = intended_end.x() - intended_start.x()
+                        dy = intended_end.y() - intended_start.y()
+                        new_length = math.hypot(dx, dy)
+                        if abs(new_length - rod.length) > 1e-6:
+                            updated_lengths[rod.id] = new_length # Store for update AFTER loop
+                            if DEBUG_CONSTRAINTS: print(f"    Rod {rod.id} length changed to {new_length:.3f}")
+                            
                     something_moved_in_pass = True
                     if DEBUG_CONSTRAINTS: print(f"    Rod {rod.id} updated.")
+            
+            # Update lengths for non-fixed rods AFTER applying positions
+            if updated_lengths:
+                panel_needs_update = False
+                for rod_id, new_len in updated_lengths.items():
+                    if rod_id in self.components_by_id:
+                        rod_to_update = self.components_by_id[rod_id]
+                        rod_to_update.length = new_len
+                        # Check if this rod is currently selected to update panel
+                        if self.selected_component == rod_to_update:
+                            panel_needs_update = True 
+                            
+                # Update parameter panel if the selected rod's length changed
+                if panel_needs_update:
+                    # Re-emit component selected signal to trigger panel refresh
+                    self.component_selected.emit(self.selected_component)
             
             # --- Step 5: Check for Convergence ---
             if not something_moved_in_pass:
