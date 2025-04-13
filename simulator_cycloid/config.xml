@@ -47,7 +47,7 @@
         </wheel>
     </drive_wheels>
     <linkages>
-        <rod id="12">
+        <rod id="12" fixed_length="false">
             <length>363.6816043750311</length>
             <start_position x="115.0" y="329.0"/>
             <end_position x="478.53920457895356" y="339.17625151509185"/>
@@ -56,7 +56,7 @@
                 <end_point connected_to="rod_13_mid"/>
             </connections>
         </rod>
-        <rod id="13">
+        <rod id="13" fixed_length="true">
             <length>505.98023676819633</length>
             <start_position x="435.0" y="636.0"/>
             <end_position x="508.43325680519285" y="135.376831543942"/>

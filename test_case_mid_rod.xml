@@ -1,0 +1,79 @@
+<?xml version="1.0" ?>
+<machine_configuration>
+    <global_settings>
+        <master_speed>1.0</master_speed>
+    </global_settings>
+    <canvas>
+        <center_position x="400" y="300"/>
+        <diameter>600</diameter>
+        <drawing_area>
+            <width>800</width>
+            <height>600</height>
+        </drawing_area>
+        <speed_control>
+            <base_ratio>0.0</base_ratio>
+        </speed_control>
+    </canvas>
+    <drive_wheels>
+        <wheel id="4" is_canvas="false">
+            <center_position x="102.0" y="168.0"/>
+            <diameter>100.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+                <rotation_rate>0.0</rotation_rate>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="50.0"/>
+            </connection_points>
+        </wheel>
+        <wheel id="7" is_canvas="false">
+            <center_position x="170.0" y="358.0"/>
+            <diameter>100.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+                <rotation_rate>0.0</rotation_rate>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="50.0"/>
+            </connection_points>
+        </wheel>
+    </drive_wheels>
+    <linkages>
+        <rod id="2" fixed_length="false">
+            <length>293.47061181658376</length>
+            <start_position x="220.0" y="358.0"/>
+            <end_position x="369.0" y="155.0"/>
+            <connections>
+                <start_point connected_to="wheel_7_point_p1"/>
+                <end_point connected_to="rod_8_start"/>
+                <mid_point distance_from_start="179.63574254585305"/>
+            </connections>
+        </rod>
+        <rod id="3" fixed_length="false">
+            <length>206.43025967526984</length>
+            <start_position x="483.3556503987764" y="513.8528648353494"/>
+            <end_position x="560.1888781933259" y="222.37813336073958"/>
+            <connections>
+                <end_point connected_to="rod_8_end"/>
+            </connections>
+        </rod>
+        <rod id="6" fixed_length="true">
+            <length>371.96250474883004</length>
+            <start_position x="152.0" y="168.0"/>
+            <end_position x="618.4726503268616" y="288.93581315276015"/>
+            <connections>
+                <start_point connected_to="wheel_4_point_p1"/>
+                <mid_point distance_from_start="138.9793150076658" connected_to="rod_2_mid"/>
+            </connections>
+        </rod>
+        <rod id="8" fixed_length="true">
+            <length>202.7140843651472</length>
+            <start_position x="369.0" y="155.0"/>
+            <end_position x="560.1888780721781" y="222.37813370450255"/>
+            <connections>
+                <start_point connected_to="rod_2_end"/>
+                <end_point connected_to="rod_3_end"/>
+            </connections>
+        </rod>
+    </linkages>
+</machine_configuration>

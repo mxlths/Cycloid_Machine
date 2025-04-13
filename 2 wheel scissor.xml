@@ -1,0 +1,90 @@
+<?xml version="1.0" ?>
+<machine_configuration>
+    <global_settings>
+        <master_speed>1.0</master_speed>
+    </global_settings>
+    <canvas>
+        <center_position x="400" y="300"/>
+        <diameter>600</diameter>
+        <drawing_area>
+            <width>800</width>
+            <height>600</height>
+        </drawing_area>
+        <speed_control>
+            <base_ratio>0.0</base_ratio>
+        </speed_control>
+    </canvas>
+    <drive_wheels>
+        <wheel id="5" is_canvas="false">
+            <center_position x="86.0" y="234.0"/>
+            <diameter>100.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+                <rotation_rate>3.1415926535897927</rotation_rate>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="10.0"/>
+            </connection_points>
+        </wheel>
+        <wheel id="6" is_canvas="false">
+            <center_position x="166.0" y="538.0"/>
+            <diameter>100.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+                <rotation_rate>3.2463124087094526</rotation_rate>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="10.0"/>
+            </connection_points>
+        </wheel>
+        <wheel id="7" is_canvas="true">
+            <center_position x="465.0" y="286.0"/>
+            <diameter>500.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+                <rotation_rate>1.0471975511965976</rotation_rate>
+            </speed_control>
+        </wheel>
+    </drive_wheels>
+    <linkages>
+        <rod id="1" fixed_length="true">
+            <length>321.38606068092</length>
+            <start_position x="136.0" y="234.0"/>
+            <end_position x="397.84214749288475" y="420.3536685882905"/>
+            <connections>
+                <start_point connected_to="wheel_5_point_p1"/>
+                <end_point connected_to="rod_2_start"/>
+                <mid_point distance_from_start="216.41222239051103" connected_to="rod_3_mid"/>
+            </connections>
+        </rod>
+        <rod id="2" fixed_length="true">
+            <length>275.4206715351905</length>
+            <start_position x="397.84214749288475" y="420.3536685882905"/>
+            <end_position x="635.3732294208448" y="280.94229377608946"/>
+            <connections>
+                <start_point connected_to="rod_1_end"/>
+                <end_point connected_to="rod_4_end"/>
+            </connections>
+            <pen_position distance_from_start="275.0"/>
+        </rod>
+        <rod id="3" fixed_length="true">
+            <length>364.30839064257435</length>
+            <start_position x="216.0" y="538.0"/>
+            <end_position x="388.9882083761575" y="217.38234101130723"/>
+            <connections>
+                <start_point connected_to="wheel_6_point_p1"/>
+                <end_point connected_to="rod_4_start"/>
+                <mid_point distance_from_start="211.7829077144801" connected_to="rod_1_mid"/>
+            </connections>
+        </rod>
+        <rod id="4" fixed_length="true">
+            <length>254.45126486353408</length>
+            <start_position x="388.9882083761575" y="217.38234101130723"/>
+            <end_position x="635.3732294208448" y="280.94229377608946"/>
+            <connections>
+                <start_point connected_to="rod_3_end"/>
+                <end_point connected_to="rod_2_end"/>
+            </connections>
+        </rod>
+    </linkages>
+</machine_configuration>
