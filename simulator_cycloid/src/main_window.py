@@ -45,8 +45,8 @@ class MainWindow(QMainWindow):
         self.canvas = DrawingCanvas()
         main_layout.addWidget(self.canvas)
         
-        # Set fixed width for the parameter panel (240px * 1.2 = 288px)
-        self.parameter_panel.setFixedWidth(288)
+        # Set fixed width for the parameter panel (288px + 100px = 388px)
+        self.parameter_panel.setFixedWidth(388)
         
         # Create status bar
         self.statusBar().showMessage("Ready")
@@ -533,9 +533,10 @@ class MainWindow(QMainWindow):
             # This case should ideally not happen if the check at the start works
             self.statusBar().showMessage("Failed to add canvas wheel.", 3000)
 
-    def _on_generate_image(self, filename: str, width: int, height: int, line_color: str, line_width: int, duration_degrees: int):
+    def _on_generate_image(self, filename: str, width: int, height: int, line_color: str, line_width: int, duration_seconds: float):
         """Trigger the path calculation and image generation."""
-        print(f"Requesting path calculation from SymPy solver for {duration_degrees} degrees...") # <-- Updated print
+        # Now receives duration directly in seconds
+        print(f"Requesting path calculation from SymPy solver for {duration_seconds:.1f} seconds...") 
         
         # Extract configuration from canvas
         all_wheels = self.canvas.wheels
@@ -568,36 +569,18 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Error: Assign a pen to a rod first.", 3000)
             return
 
-        # Get calculation parameters (e.g., duration, steps - maybe from UI later?)
-        # OLD: duration = 10.0 # Seconds
-        # OLD: steps = 600    # Number of steps
+        # --- REMOVED OLD DURATION/STEPS CALCULATION --- 
+        # Duration is now passed directly in seconds.
+        # Need to calculate steps based on the provided duration_seconds.
         
-        # Convert duration from degrees to appropriate unit for sympy_solver (e.g., radians or time)
-        # Assuming the solver uses radians and the canvas wheel speed determines time:
-        canvas_wheel_speed_rad_per_sec = 1.0 # Placeholder - needs to be fetched or defined
-        if self.canvas.canvas_wheel and self.canvas.canvas_wheel.rotation_rate != 0:
-             # Assuming rotation_rate is in degrees/sec for consistency with panel?
-             canvas_wheel_speed_rad_per_sec = math.radians(self.canvas.canvas_wheel.rotation_rate)
-        elif self.canvas.canvas_wheel:
-            print("Warning: Canvas wheel rotation rate is zero. Assuming 1.0 rad/sec for duration calculation.")
-            # Keep default 1.0
-        else:
-            print("Warning: No canvas wheel found. Assuming 1.0 rad/sec for duration calculation.")
-            # Keep default 1.0
-
-        if canvas_wheel_speed_rad_per_sec == 0: # Avoid division by zero
-            print("Error: Cannot calculate duration with zero canvas wheel speed.")
-            self.statusBar().showMessage("Error: Canvas wheel speed cannot be zero.", 3000)
-            return
-            
-        total_angle_radians = math.radians(duration_degrees)
-        duration_seconds = abs(total_angle_radians / canvas_wheel_speed_rad_per_sec) # Use abs for safety
-
+        # Rotation rate is now handled in rad/s internally.
+        # No conversion needed here anymore.
+        
         # Calculate steps based on duration (e.g., aim for a certain temporal resolution)
         steps_per_second = 60 # Aim for 60 steps per second of simulation time
         steps = max(60, int(duration_seconds * steps_per_second)) # Ensure a minimum number of steps
 
-        print(f"Calculated: duration={duration_seconds:.2f}s, steps={steps}") # <-- Debug print
+        print(f"Using: duration={duration_seconds:.2f}s, steps={steps}")
 
         try:
             # Call the sympy solver
@@ -607,7 +590,7 @@ class MainWindow(QMainWindow):
                 canvas_wheel=canvas_wheel_obj, # Pass the identified canvas wheel
                 pen_rod_id=pen_rod_id,
                 pen_distance_from_start=pen_distance_from_start,
-                duration=duration_seconds, # Pass calculated duration in seconds
+                duration=duration_seconds, # Pass duration in seconds directly
                 steps=steps, # Pass calculated steps
                 components_dict=components_dict
             )

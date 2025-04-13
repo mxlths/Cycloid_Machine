@@ -15,42 +15,42 @@
         </speed_control>
     </canvas>
     <drive_wheels>
-        <wheel id="1">
-            <center_position x="65.0" y="254.0"/>
+        <wheel id="1" is_canvas="false">
+            <center_position x="75.0" y="329.0"/>
             <diameter>250.0</diameter>
             <speed_control>
                 <base_ratio>1.0</base_ratio>
-                <rotation_rate>180.0</rotation_rate>
+                <rotation_rate>0.10471975511965977</rotation_rate>
+            </speed_control>
+            <connection_points>
+                <point id="p1" radius="40.0"/>
+            </connection_points>
+        </wheel>
+        <wheel id="2" is_canvas="false">
+            <center_position x="335.0" y="636.0"/>
+            <diameter>250.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+                <rotation_rate>8.377580409572781</rotation_rate>
             </speed_control>
             <connection_points>
                 <point id="p1" radius="100.0"/>
             </connection_points>
         </wheel>
-        <wheel id="2">
-            <center_position x="312.0" y="567.0"/>
-            <diameter>250.0</diameter>
-            <speed_control>
-                <base_ratio>1.0</base_ratio>
-                <rotation_rate>179.0</rotation_rate>
-            </speed_control>
-            <connection_points>
-                <point id="p1" radius="100.0"/>
-            </connection_points>
-        </wheel>
-        <wheel id="15">
-            <center_position x="473.0" y="197.0"/>
+        <wheel id="16" is_canvas="true">
+            <center_position x="525.0" y="266.0"/>
             <diameter>500.0</diameter>
             <speed_control>
                 <base_ratio>1.0</base_ratio>
-                <rotation_rate>169.0</rotation_rate>
+                <rotation_rate>0.10471975511965977</rotation_rate>
             </speed_control>
         </wheel>
     </drive_wheels>
     <linkages>
         <rod id="12">
-            <length>306.8744916427394</length>
-            <start_position x="165.0" y="254.0"/>
-            <end_position x="471.2908533179406" y="272.9173675430145"/>
+            <length>363.6816043750311</length>
+            <start_position x="115.0" y="329.0"/>
+            <end_position x="478.53920457895356" y="339.17625151509185"/>
             <connections>
                 <start_point connected_to="wheel_1_point_p1"/>
                 <end_point connected_to="rod_13_mid"/>
@@ -58,8 +58,8 @@
         </rod>
         <rod id="13">
             <length>505.98023676819633</length>
-            <start_position x="412.0" y="567.0"/>
-            <end_position x="512.0" y="71.0"/>
+            <start_position x="435.0" y="636.0"/>
+            <end_position x="508.43325680519285" y="135.376831543942"/>
             <connections>
                 <start_point connected_to="wheel_2_point_p1"/>
                 <mid_point distance_from_start="300.0"/>

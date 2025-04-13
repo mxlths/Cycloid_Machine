@@ -34,6 +34,7 @@ class WheelConfig:
     diameter: float # Diameter will be needed for visualization, even if connection points define mechanics
     speed_control: SpeedControlConfig
     connection_points: Dict[str, ConnectionPoint]
+    is_canvas: bool = False # Added is_canvas field
     # Add compound wheels later if needed
 
 @dataclass
@@ -176,13 +177,18 @@ def load_config_from_xml(file_path: str) -> MachineConfig:
             connection_points = _parse_connection_points(wheel_elem)
             
             # TODO: Parse compound wheels
+            
+            # Read the is_canvas attribute
+            is_canvas_str = wheel_elem.get('is_canvas', 'false')
+            is_canvas = is_canvas_str.lower() == 'true'
 
             drive_wheels_config[wheel_id] = WheelConfig(
                 id=wheel_id,
                 center=center,
                 diameter=diameter, 
                 speed_control=speed_config,
-                connection_points=connection_points
+                connection_points=connection_points,
+                is_canvas=is_canvas # Store the loaded value
             )
 
     # --- Linkages (Rods) ---
@@ -359,6 +365,7 @@ def populate_canvas_from_config(canvas: DrawingCanvas, config: MachineConfig):
     canvas.pen_path_points.clear()
     canvas._next_component_id = 1 # Reset ID counter
     max_id = 0
+    canvas.canvas_wheel = None # Ensure canvas wheel is reset before loading
 
     # Create Wheels
     for wheel_id, wheel_config in config.drive_wheels.items():
@@ -369,8 +376,20 @@ def populate_canvas_from_config(canvas: DrawingCanvas, config: MachineConfig):
             speed_ratio=wheel_config.speed_control.base_ratio, # Ignoring modulation for now
             rotation_rate=wheel_config.speed_control.rotation_rate, # Added rotation rate
             # Add connection points directly from config
-            connection_points=wheel_config.connection_points.copy() 
+            connection_points=wheel_config.connection_points.copy(),
+            is_canvas=wheel_config.is_canvas # Set the is_canvas flag
         )
+        
+        # If this wheel is the canvas wheel, store the reference
+        if new_wheel.is_canvas:
+            if canvas.canvas_wheel is None:
+                canvas.canvas_wheel = new_wheel
+                print(f"  Wheel {wheel_id} identified as Canvas Wheel.")
+            else:
+                # Handle multiple canvas wheels defined in XML (warn user, use first one)
+                print(f"WARNING: Multiple wheels marked as canvas in config. Using Wheel {canvas.canvas_wheel.id} as canvas, ignoring Wheel {wheel_id}.")
+                new_wheel.is_canvas = False # Unset the flag on the duplicate
+                
         canvas.wheels.append(new_wheel)
         canvas.components_by_id[wheel_id] = new_wheel
         max_id = max(max_id, wheel_id)

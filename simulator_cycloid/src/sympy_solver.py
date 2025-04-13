@@ -63,7 +63,7 @@ def calculate_path_sympy(
         # Define angular velocity and angle symbols
         theta_c = dynamicsymbols(f'theta_{canvas_wheel.id}')
         omega_c = dynamicsymbols(f'omega_{canvas_wheel.id}')
-        omega_c_val = math.radians(canvas_wheel.rotation_rate) # rad/s
+        omega_c_val = canvas_wheel.rotation_rate # Assumed to be rad/s now
         known_ang_vels_sym[omega_c] = omega_c_val
         known_angles_func[theta_c] = omega_c_val * t
         
@@ -100,7 +100,7 @@ def calculate_path_sympy(
 
         theta_w = dynamicsymbols(f'theta_{wheel.id}')
         omega_w = dynamicsymbols(f'omega_{wheel.id}')
-        omega_w_val = math.radians(wheel.rotation_rate) # rad/s relative to CANVAS frame
+        omega_w_val = wheel.rotation_rate # Assumed to be rad/s now
         known_ang_vels_sym[omega_w] = omega_w_val
         known_angles_func[theta_w] = omega_w_val * t
         
@@ -130,61 +130,33 @@ def calculate_path_sympy(
             p_sm.v2pt_theory(wheel_origin, N, wheel_frame)
             sympy_points[(wheel.id, cp_id)] = p_sm
             
-    # --- Rod Bodies and Points (Refined v2) --- 
+    # --- Rod Bodies and Points (Refined v3 - Explicit Start Coords) --- 
     pen_point_sm = None # Initialize pen point
-    sympy_rod_start_unk_coords: Dict[int, Tuple[sympy.Expr, sympy.Expr]] = {}
+    # sympy_rod_start_unk_coords: Dict[int, Tuple[sympy.Expr, sympy.Expr]] = {} # No longer needed
     for rod in rods:
-        # Define unknown angle for the rod relative to the world N.x
+        # Define unknown angle AND unknown start coordinates for the rod
         phi_r = dynamicsymbols(f'phi_{rod.id}')
+        sx_r, sy_r = dynamicsymbols(f'sx_{rod.id}, sy_{rod.id}')
         rod_angles_sym[rod.id] = phi_r
-        unknown_generalized_coords.append(phi_r) # Angle is always an unknown coord for rods
+        # Add all 3 as unknowns
+        unknown_generalized_coords.extend([phi_r, sx_r, sy_r]) 
         
-        # Define rod frame based on this angle
+        # Define rod frame based on the unknown angle
         rod_frame = ReferenceFrame(f'R_{rod.id}')
         rod_frame.orient_axis(N, N.z, phi_r)
         sympy_frames[rod.id] = rod_frame
         
-        # Define START Point:
-        start_pt_sm = None
-        start_point_defined_by_unknowns = False
-        if rod.start_connection:
-            target_comp_id, target_point_id_or_type = rod.start_connection
-            target_point_sm = sympy_points.get((target_comp_id, target_point_id_or_type))
-            if target_point_sm:
-                # If connected to a known point, use that point as the start point!
-                start_pt_sm = target_point_sm 
-                print(f"  Rod {rod.id}: Start point set directly to known point {target_comp_id}.{target_point_id_or_type}")
-            else:
-                print(f"ERROR: Cannot find target point {rod.start_connection} for Rod {rod.id} start. Defining with unknown coordinates.")
-                sx_r, sy_r = dynamicsymbols(f'sx_{rod.id}, sy_{rod.id}')
-                unknown_generalized_coords.extend([sx_r, sy_r])
-                start_pt_sm = O.locatenew(f'P_{rod.id}_start_UNK', sx_r * N.x + sy_r * N.y)
-                sympy_rod_start_unk_coords[rod.id] = (sx_r, sy_r)
-                start_point_defined_by_unknowns = True
-        else:
-            # If no start connection, it MUST be defined by unknown coordinates
-            print(f"  Rod {rod.id}: Start point defined with unknown coordinates as it's unconnected.")
-            sx_r, sy_r = dynamicsymbols(f'sx_{rod.id}, sy_{rod.id}')
-            unknown_generalized_coords.extend([sx_r, sy_r])
-            start_pt_sm = O.locatenew(f'P_{rod.id}_start_UNK', sx_r * N.x + sy_r * N.y)
-            sympy_rod_start_unk_coords[rod.id] = (sx_r, sy_r)
-            start_point_defined_by_unknowns = True
-            
-        if start_pt_sm is None:
-            print(f"CRITICAL ERROR: Could not define start point for Rod {rod.id}. Skipping rod.")
-            # Potentially raise an exception here instead of continuing
-            continue 
-
+        # Define START Point using unknown coordinates
+        start_pt_sm = O.locatenew(f'P_{rod.id}_start_UNK', sx_r * N.x + sy_r * N.y)
+        # Set velocity to zero initially? Or let constraints handle it? Let constraints handle it.
+        # start_pt_sm.set_vel(N, 0) 
         sympy_points[(rod.id, 'start')] = start_pt_sm
 
         # Define END Point relative to START Point using length and angle
         end_pt_sm = start_pt_sm.locatenew(f'P_{rod.id}_end', rod.length * rod_frame.x)
         sympy_points[(rod.id, 'end')] = end_pt_sm
 
-        # Define Body (using the now defined start_pt_sm as masscenter)
-        # Using start point as mass center might not be physically accurate, but okay for kinematics
-        # body_r = Body(f'Body_{rod.id}', masscenter=start_pt_sm, frame=rod_frame)
-        # sympy_bodies[rod.id] = body_r
+        # Define Body (using the start_pt_sm as masscenter)
         rigidbody_r = RigidBody(f'Body_{rod.id}', masscenter=start_pt_sm, frame=rod_frame)
         sympy_bodies[rod.id] = rigidbody_r
         
@@ -199,9 +171,9 @@ def calculate_path_sympy(
             # We will need to extract the position of this point later
 
     # ---------------------------------------------------
-    # --- 3. Define Constraints (Simplified) ----------
+    # --- 3. Define Constraints (Explicit Start/End/Mid) ---
     # ---------------------------------------------------
-    print("  Defining SymPy Joints...")
+    print("  Defining SymPy Joints (Explicit Start/End/Mid)...")
     constraints = [] # We'll store constraint equations here for nsolve
     
     for rod in rods:
@@ -210,26 +182,23 @@ def calculate_path_sympy(
         rod_mid_pt_sm = sympy_points.get((rod.id, 'mid')) # Might be None
         
         if not rod_start_pt_sm or not rod_end_pt_sm:
-            print(f"WARNING: Missing start/end point for Rod {rod.id} during constraint setup.")
+            print(f"WARNING: Missing start/end point definition for Rod {rod.id} during constraint setup.")
             continue
 
-        # Start Connection Constraint
-        # Only needed if start point was defined using unknown coordinates (sx_r, sy_r)
-        if rod.id in sympy_rod_start_unk_coords:
-            if rod.start_connection:
-                 target_comp_id, target_point_id_or_type = rod.start_connection
-                 target_point_sm = sympy_points.get((target_comp_id, target_point_id_or_type))
-                 if target_point_sm:
-                     print(f"  Rod {rod.id}: Adding start constraint for unknown coords ({rod.start_connection}).")
-                     constraint_vector = rod_start_pt_sm.pos_from(O) - target_point_sm.pos_from(O)
-                     constraints.append(constraint_vector.dot(N.x))
-                     constraints.append(constraint_vector.dot(N.y))
-                 else:
-                     print(f"WARNING: Missing target SymPy Point for Rod {rod.id} start constraint (with unk coords): {rod.start_connection}")
-            # else: If start had unk coords but NO connection, it's a free start point?
-            #      This case might need more thought - is it physically valid in this simulator?
+        # --- Start Connection Constraint (Add EXPLICITLY if connection exists) ---
+        if rod.start_connection:
+             target_comp_id, target_point_id_or_type = rod.start_connection
+             target_point_sm = sympy_points.get((target_comp_id, target_point_id_or_type))
+             if target_point_sm:
+                 print(f"  Rod {rod.id}: Adding EXPLICIT start constraint ({rod.start_connection}).")
+                 constraint_vector = rod_start_pt_sm.pos_from(O) - target_point_sm.pos_from(O)
+                 constraints.append(constraint_vector.dot(N.x))
+                 constraints.append(constraint_vector.dot(N.y))
+             else:
+                 print(f"WARNING: Missing target SymPy Point for Rod {rod.id} start constraint: {rod.start_connection}")
+        # If rod.start_connection is None, sx_r/sy_r remain unconstrained by connections.
 
-        # End Connection Constraint
+        # --- End Connection Constraint (Same as before) ---
         if rod.end_connection:
             target_comp_id, target_point_id_or_type = rod.end_connection
             target_point_sm = sympy_points.get((target_comp_id, target_point_id_or_type))
@@ -310,17 +279,11 @@ def calculate_path_sympy(
 
         # Solve for unknown rod angles at this time step
         try:
-            # Using nsolve requires symbolic substitution first, which is slow.
-            # Using scipy.optimize.root might be better with the lambdified function.
-            
-            # --- Attempt with nsolve (might be slow) --- 
-            # subst = {sym: val for sym, val in zip(known_symbols, known_vals)}
-            # solution = nsolve(constraint_eqs.subs(subst), unknown_symbols, current_guess, verify=False)
-            # solved_unknowns = np.array(solution, dtype=float).flatten()
-            
             # --- Attempt with scipy.optimize.root (using lambdify) --- 
             from scipy.optimize import root
-            sol = root(constraint_func_at_t, current_guess, method='lm') # Levenberg-Marquardt often good for this
+            # Define tolerances (reverted from 1e-12)
+            solver_options = {'xtol': 1e-9, 'ftol': 1e-9}
+            sol = root(constraint_func_at_t, current_guess, method='lm', options=solver_options) # Pass options
             if not sol.success:
                  print(f"WARNING: Solver failed at step {i}, t={current_t_val:.2f}. Message: {sol.message}")
                  # Use previous solution or guess? Could lead to errors.

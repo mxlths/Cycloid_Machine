@@ -6,6 +6,7 @@ from PyQt6.QtGui import QFocusEvent, QPalette, QColor
 from components import Wheel, Rod
 from typing import Optional, Dict, Tuple, Union
 from functools import partial
+import math # <-- Ensure math is imported
 
 # Helper to format connection tuples back to strings
 def _format_connection_target(connection: Optional[Tuple[int, str]], components_dict: Dict) -> Optional[str]:
@@ -55,7 +56,7 @@ class ParameterPanel(QFrame):
     parameter_changed = pyqtSignal(object, str, object) # component, param_name, value
     
     # Signal for image generation
-    image_generate_requested = pyqtSignal(str, int, int, str, int, int) # filename, w, h, color, line_width, duration_degrees
+    image_generate_requested = pyqtSignal(str, int, int, str, int, float) # filename, w, h, color, line_width, duration_seconds
     # Signal to add canvas wheel
     add_canvas_requested = pyqtSignal()
     
@@ -166,11 +167,23 @@ class ParameterPanel(QFrame):
         self.image_height_spin.setRange(100, 8000)
         self.image_height_spin.setValue(1080)
         image_gen_form_layout.addRow("Height (px):", self.image_height_spin)
-        self.simulation_duration_spin = QSpinBox()
-        self.simulation_duration_spin.setRange(360, 360 * 100) # e.g., 1 to 100 rotations
-        self.simulation_duration_spin.setSingleStep(360)
-        self.simulation_duration_spin.setValue(360 * 5) # Default to 5 rotations
-        image_gen_form_layout.addRow("Duration (degrees):", self.simulation_duration_spin)
+        
+        # --- Duration Input (Seconds) --- 
+        self.simulation_duration_spin = QDoubleSpinBox()
+        self.simulation_duration_spin.setRange(0.1, 3600 * 24) # 0.1s to 24 hours
+        self.simulation_duration_spin.setDecimals(1)
+        self.simulation_duration_spin.setSingleStep(10.0)
+        self.simulation_duration_spin.setValue(60.0) # Default to 60 seconds
+        self.simulation_duration_label = QLabel("--:--:--") # Placeholder for HH:MM:SS
+        duration_layout = QHBoxLayout()
+        duration_layout.addWidget(self.simulation_duration_spin)
+        duration_layout.addWidget(self.simulation_duration_label)
+        image_gen_form_layout.addRow("Duration (s):", duration_layout)
+        # Connect valueChanged signal to update the label
+        self.simulation_duration_spin.valueChanged.connect(self._update_duration_display)
+        self._update_duration_display(self.simulation_duration_spin.value()) # Initial display
+        # --- End Duration Input ---
+        
         self.image_line_width_spin = QSpinBox()
         self.image_line_width_spin.setRange(1, 20)
         self.image_line_width_spin.setValue(1)
@@ -275,12 +288,15 @@ class ParameterPanel(QFrame):
             self.detail_widgets['speed_ratio'] = speed_ratio_spin
             self.details_layout.addRow("Speed Ratio:", speed_ratio_spin)
 
-            rotation_rate_spin = QDoubleSpinBox()
-            rotation_rate_spin.setRange(-1000.0, 1000.0)
-            rotation_rate_spin.setDecimals(1)
-            rotation_rate_spin.setValue(wheel.rotation_rate)
-            self.detail_widgets['rotation_rate'] = rotation_rate_spin
-            self.details_layout.addRow("Rotation Rate (°/s):", rotation_rate_spin)
+            # Rotation Rate (RPM) - Input as text (QLineEdit), store as rad/s internally
+            rpm_edit = QLineEdit()
+            # Convert internal rad/s to RPM for display
+            rpm_display = wheel.rotation_rate * 60 / (2 * math.pi) 
+            rpm_edit.setText(f"{rpm_display:.4f}") # Display with some precision
+            self.detail_widgets['rotation_rate'] = rpm_edit
+            # Use editingFinished for less frequent updates, or textChanged for instant feedback
+            rpm_edit.editingFinished.connect(partial(self._handle_rpm_changed, wheel, rpm_edit))
+            self.details_layout.addRow("Rotation Rate (RPM):", rpm_edit)
 
             # --- Connection Point 'p1' Radius ---
             p1_radius_spin = QDoubleSpinBox()
@@ -303,7 +319,7 @@ class ParameterPanel(QFrame):
             center_x_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'center_x'))
             center_y_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'center_y'))
             speed_ratio_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'speed_ratio'))
-            rotation_rate_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'rotation_rate'))
+            rpm_edit.editingFinished.connect(partial(self._handle_rpm_changed, wheel, rpm_edit))
             # --- End Populate --- 
 
             # No need to set layout again, just update
@@ -330,6 +346,45 @@ class ParameterPanel(QFrame):
             if old_layout is not None:
                 QWidget().setLayout(old_layout)
                 old_layout.deleteLater()
+
+    def _handle_rpm_changed(self, component: Wheel, line_edit: QLineEdit):
+        """Parse RPM input, convert to rad/s, and emit parameter_changed."""
+        input_text = line_edit.text().strip()
+        try:
+            rpm_value = 0.0
+            if '/' in input_text:
+                # Try parsing as a fraction
+                parts = input_text.split('/')
+                if len(parts) == 2:
+                    num = float(parts[0].strip())
+                    den = float(parts[1].strip())
+                    if den == 0:
+                        raise ValueError("Division by zero in RPM fraction.")
+                    rpm_value = num / den
+                else:
+                    raise ValueError("Invalid fraction format for RPM.")
+            else:
+                # Try parsing as a float
+                rpm_value = float(input_text)
+                
+            # Convert valid RPM to rad/s
+            rad_per_sec = rpm_value * (2 * math.pi) / 60.0
+            
+            # Emit the change with the value in rad/s
+            print(f"RPM input '{input_text}' parsed to {rpm_value:.4f} RPM -> {rad_per_sec:.4f} rad/s")
+            self.parameter_changed.emit(component, 'rotation_rate', rad_per_sec)
+            
+            # Optional: Update the line edit text to the formatted parsed RPM value?
+            # line_edit.setText(f"{rpm_value:.4f}") 
+            
+        except ValueError as e:
+            print(f"Error parsing RPM value '{input_text}': {e}")
+            # Optionally provide feedback to the user (e.g., red background)
+            # Restore previous value? Requires storing it or fetching from component again.
+            current_rad_per_sec = component.rotation_rate
+            current_rpm = current_rad_per_sec * 60 / (2 * math.pi)
+            line_edit.setText(f"{current_rpm:.4f}") # Restore display
+            # You might want to flash the background red briefly here
 
     def show_rod_details(self, rod: Rod, components_dict: Dict):
         """Display editable details for the selected rod."""
@@ -653,20 +708,31 @@ class ParameterPanel(QFrame):
         height = self.image_height_spin.value()
         line_color = "#0000FF" # Placeholder Blue
         line_width = self.image_line_width_spin.value()
-        duration_degrees = self.simulation_duration_spin.value() # <-- Get duration
+        duration_seconds = self.simulation_duration_spin.value() # <-- Get duration in seconds
         
         if not filename:
             # TODO: Show error message
             print("Error: Filename cannot be empty.")
             return
             
-        self.image_generate_requested.emit(filename, width, height, line_color, line_width, duration_degrees) # <-- Emit with duration
+        self.image_generate_requested.emit(filename, width, height, line_color, line_width, duration_seconds) # <-- Emit with duration_seconds
 
     # --- Add Method for GroupBox Toggling --- 
     def _handle_section_toggled(self, checked):
         """Handles the toggled signal from checkable QGroupBox sections."""
-        # Currently does nothing, the GroupBox handles its visual state.
-        # We could add logic here later if needed (e.g., save state).
-        pass
+        # Optional: Adjust visibility or layout based on section state
+        sender = self.sender()
+        if isinstance(sender, QGroupBox):
+            # Example: print(f"Section '{sender.title()}' toggled: {checked}")
+            # You might hide/show the content widget or adjust layout spacing
+            pass
+            
+    def _update_duration_display(self, seconds_value: float):
+        """Formats seconds into HH:MM:SS and updates the label."""
+        total_seconds = int(seconds_value)
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        self.simulation_duration_label.setText(f"({hours:02d}:{minutes:02d}:{seconds:02d})")
     # --- End Method --- 
     

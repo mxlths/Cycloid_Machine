@@ -100,7 +100,7 @@ class DrawingCanvas(QWidget):
         
         # Draw pen path (transform points relative to canvas wheel)
         if self.pen_path_points: # Check if list is not empty
-            painter.setPen(QPen(Qt.GlobalColor.darkCyan, 1)) # Pen color
+            painter.setPen(QPen(Qt.GlobalColor.black, 1)) # Pen color
             
             # Convert absolute canvas points to screen points for drawing
             screen_points_list = [self._canvas_to_screen(p) for p in self.pen_path_points if not (math.isnan(p.x()) or math.isnan(p.y()))] 

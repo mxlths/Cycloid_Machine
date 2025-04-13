@@ -65,7 +65,10 @@ def generate_xml_tree(wheels: List[Wheel], rods: List[Rod], components_dict) -> 
     # --- Drive Wheels ---
     drive_wheels = _add_sub_element(root, 'drive_wheels')
     for wheel in wheels:
-        wheel_elem = _add_sub_element(drive_wheels, 'wheel', attrib={'id': str(wheel.id)})
+        # Add is_canvas attribute to the wheel element
+        wheel_attrs = {'id': str(wheel.id), 'is_canvas': str(wheel.is_canvas).lower()}
+        wheel_elem = _add_sub_element(drive_wheels, 'wheel', attrib=wheel_attrs)
+        
         _add_sub_element(wheel_elem, 'center_position', attrib={'x': str(wheel.center.x()), 'y': str(wheel.center.y())})
         _add_sub_element(wheel_elem, 'diameter', str(wheel.diameter))
         
