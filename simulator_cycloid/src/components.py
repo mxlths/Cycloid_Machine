@@ -97,6 +97,7 @@ class Wheel:
     id: int # ID is now assigned externally
     speed_ratio: float = 1.0 # TODO: Consider replacing this with rotation_rate
     rotation_rate: float = 0.0 # Degrees per simulation time step
+    is_canvas: bool = False # Flag to identify the canvas wheel
     # Store multiple named connection points
     connection_points: Dict[str, ConnectionPoint] = field(default_factory=dict)
     current_angle_deg: float = 0.0 # Track the wheel's rotation

@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, QDoubleSpinBox,
-                               QPushButton, QFrame, QScrollArea, QButtonGroup, QFormLayout, QSizePolicy, QLayout, QCheckBox, QSpinBox, QHBoxLayout)
+                               QPushButton, QFrame, QScrollArea, QButtonGroup, QFormLayout, QSizePolicy, QLayout, QCheckBox, QSpinBox, QHBoxLayout, QFileDialog)
 from PyQt6.QtCore import Qt, pyqtSignal, QPointF
 from PyQt6.QtGui import QFocusEvent, QPalette, QColor
 from components import Wheel, Rod
@@ -57,7 +57,7 @@ class CollapsibleSection(QFrame):
         # Content widget container (will hold the actual content layout)
         self.content_area = QWidget()
         self.content_area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.content_area.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.content_area.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.content_area.setVisible(self.toggle_button.isChecked())
 
         main_layout.addWidget(self.toggle_button)
@@ -78,16 +78,37 @@ class CollapsibleSection(QFrame):
         # Update visibility based on button state
         self.content_area.setVisible(self.toggle_button.isChecked())
         
+    def setContentWidget(self, widget: QWidget):
+        """Sets a widget as the content for the content area."""
+        # Check if content_area already has a layout
+        # If so, we should set the new widget into that layout?
+        # Or assume content_area should hold ONE widget directly?
+        # For simplicity, let's assume content_area uses a simple layout (e.g., QVBoxLayout)
+        # to hold the provided widget. We'll create this layout if it doesn't exist.
+        
+        content_layout = self.content_area.layout()
+        if content_layout is None:
+            content_layout = QVBoxLayout(self.content_area) # Create a layout if none exists
+            content_layout.setContentsMargins(0, 0, 0, 0)
+            self.content_area.setLayout(content_layout)
+
+        # Clear previous widgets from the layout
+        while content_layout.count():
+            item = content_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+                
+        # Add the new widget
+        content_layout.addWidget(widget)
+        self.content_area.adjustSize()
+        self.content_area.setVisible(self.toggle_button.isChecked())
+        
     def _toggle_content(self, checked):
         self.content_area.setVisible(checked)
-        # When hiding, set maximum height to 0
-        if not checked:
-             self.content_area.setMaximumHeight(0)
-        else:
-             # Allow content area to expand vertically again
-             self.content_area.setMaximumHeight(16777215) # Default max height
-        # Request layout update
-        self.parentWidget().layout().activate()
+        # Request layout update (this might still be useful)
+        # Let the parent layout know things might have changed size
+        if self.parentWidget() and self.parentWidget().layout():
+             self.parentWidget().layout().activate()
 
 class ParameterPanel(QFrame):
     # Signal when snap size changes
@@ -175,6 +196,41 @@ class ParameterPanel(QFrame):
         self.simulation_section.setContentLayout(sim_layout)
         self.container_layout.addWidget(self.simulation_section)
         # --- End Simulation Controls ---
+
+        # --- Add Image Generation Section --- 
+        self.image_gen_section = CollapsibleSection("Image Generation")
+        image_gen_form_layout = QFormLayout()
+        
+        self.image_filename_edit = QLineEdit("cycloid_pattern.png")
+        self.browse_button = QPushButton("Browse...")
+        self.browse_button.clicked.connect(self._browse_filename)
+        filename_layout = QHBoxLayout()
+        filename_layout.addWidget(self.image_filename_edit)
+        filename_layout.addWidget(self.browse_button)
+        image_gen_form_layout.addRow("Filename:", filename_layout)
+        
+        self.image_width_spin = QSpinBox()
+        self.image_width_spin.setRange(100, 8000)
+        self.image_width_spin.setValue(1920)
+        image_gen_form_layout.addRow("Width (px):", self.image_width_spin)
+        
+        self.image_height_spin = QSpinBox()
+        self.image_height_spin.setRange(100, 8000)
+        self.image_height_spin.setValue(1080)
+        image_gen_form_layout.addRow("Height (px):", self.image_height_spin)
+        
+        self.image_line_width_spin = QSpinBox()
+        self.image_line_width_spin.setRange(1, 20)
+        self.image_line_width_spin.setValue(1)
+        image_gen_form_layout.addRow("Line Width (px):", self.image_line_width_spin)
+        
+        self._generate_image_button = QPushButton("Generate Image")
+        self._generate_image_button.clicked.connect(self._on_generate_image)
+        image_gen_form_layout.addRow(self._generate_image_button) # Add button to form layout
+        
+        self.image_gen_section.setContentLayout(image_gen_form_layout) # Set the form layout on the section
+        self.container_layout.addWidget(self.image_gen_section) # Add section to the main container
+        # --- End Image Generation Section ---
         
         # Add container to scroll area
         scroll.setWidget(container)
@@ -192,18 +248,23 @@ class ParameterPanel(QFrame):
         self.components_dict: Dict[int, Union[Wheel, Rod]] = {} # Add initialization
 
     def _setup_details_section(self):
-        # Create the layout that will hold the details
-        self.details_layout = QFormLayout()
-        # Set this layout onto the content area of the details section
-        self.details_section.setContentLayout(self.details_layout)
+        # This method no longer needs to create the layout itself.
+        # The show_..._details methods will create the layout and content widget.
+        # We just ensure the content_area exists within the details_section.
+        pass # Remove old layout creation
+        # self.details_layout = QFormLayout()
+        # self.details_section.setContentLayout(self.details_layout)
 
     def _clear_details_layout(self):
-        """Remove all widgets from the details layout."""
-        while self.details_layout.count():
-            item = self.details_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
+        """Remove the existing content widget from the details section."""
+        # Find the current content widget in the details section's content area
+        content_layout = self.details_section.content_area.layout()
+        if content_layout and content_layout.count() > 0:
+            item = content_layout.takeAt(0)
+            if item and item.widget():
+                widget = item.widget()
                 widget.deleteLater()
+        # Clear the reference dictionary too
         self.detail_widgets = {}
 
     def clear_details(self):
@@ -214,222 +275,238 @@ class ParameterPanel(QFrame):
 
     def show_wheel_details(self, wheel: Wheel, components_dict: Dict):
         """Display editable details for the selected wheel."""
-        self._clear_details_layout()
-        self.update_components_dict(components_dict) # Ensure dict is updated
-        self.details_section.toggle_button.setText(f"Wheel Details (ID: {wheel.id})")
+        try:
+            self._clear_details_layout() # Clear old content widget
+            self.update_components_dict(components_dict) # Ensure dict is updated
+            self.details_section.toggle_button.setText(f"Wheel Details (ID: {wheel.id})")
 
-        # Use QDoubleSpinBox for numerical values
-        diameter_spin = QDoubleSpinBox()
-        diameter_spin.setRange(1.0, 10000.0) # Example range
-        diameter_spin.setDecimals(1)
-        diameter_spin.setValue(wheel.diameter)
-        self.detail_widgets['diameter'] = diameter_spin
-        self.details_layout.addRow("Diameter:", diameter_spin)
+            # Create a new container widget and layout for the details
+            detail_container = QWidget()
+            new_layout = QFormLayout(detail_container) # Set layout on container
+            self.detail_widgets = {} # Reset detail widgets dict
 
-        center_x_spin = QDoubleSpinBox()
-        center_x_spin.setRange(-10000.0, 10000.0) # Example range
-        center_x_spin.setDecimals(1)
-        center_x_spin.setValue(wheel.center.x())
-        self.detail_widgets['center_x'] = center_x_spin
-        self.details_layout.addRow("Center X:", center_x_spin)
-        
-        center_y_spin = QDoubleSpinBox()
-        center_y_spin.setRange(-10000.0, 10000.0) # Example range
-        center_y_spin.setDecimals(1)
-        center_y_spin.setValue(wheel.center.y())
-        self.detail_widgets['center_y'] = center_y_spin
-        self.details_layout.addRow("Center Y:", center_y_spin)
+            # --- Populate new_layout --- 
+            diameter_spin = QDoubleSpinBox()
+            diameter_spin.setRange(1.0, 10000.0)
+            diameter_spin.setDecimals(1)
+            diameter_spin.setValue(wheel.diameter)
+            self.detail_widgets['diameter'] = diameter_spin
+            new_layout.addRow("Diameter:", diameter_spin)
 
-        speed_ratio_spin = QDoubleSpinBox()
-        speed_ratio_spin.setRange(-100.0, 100.0) # Example range
-        speed_ratio_spin.setDecimals(2)
-        speed_ratio_spin.setValue(wheel.speed_ratio)
-        self.detail_widgets['speed_ratio'] = speed_ratio_spin
-        self.details_layout.addRow("Speed Ratio:", speed_ratio_spin)
-
-        rotation_rate_spin = QDoubleSpinBox()
-        rotation_rate_spin.setRange(-1000.0, 1000.0) # Degrees per second
-        rotation_rate_spin.setDecimals(1)
-        rotation_rate_spin.setValue(wheel.rotation_rate)
-        self.detail_widgets['rotation_rate'] = rotation_rate_spin
-        self.details_layout.addRow("Rotation Rate (°/s):", rotation_rate_spin)
-
-        # --- Connection Point 'p1' Radius ---
-        p1_radius_spin = QDoubleSpinBox()
-        p1_radius_spin.setRange(0.0, 10000.0) # Radius >= 0
-        p1_radius_spin.setDecimals(1)
-        p1_radius_spin.setEnabled(False) # Disabled by default
-        p1_radius_spin.setToolTip("Radius for connection point 'p1'")
-        
-        # Check if point 'p1' exists
-        if 'p1' in wheel.connection_points:
-            p1_radius_spin.setValue(wheel.connection_points['p1'].radius)
-            p1_radius_spin.setEnabled(True)
-            # Connect signal only if the point exists and is editable
-            p1_radius_spin.valueChanged.connect(
-                partial(self._handle_value_changed, wheel, 'p1_radius'))
-        else:
-            p1_radius_spin.setValue(0.0) # Default display value
+            center_x_spin = QDoubleSpinBox()
+            center_x_spin.setRange(-10000.0, 10000.0)
+            center_x_spin.setDecimals(1)
+            center_x_spin.setValue(wheel.center.x())
+            self.detail_widgets['center_x'] = center_x_spin
+            new_layout.addRow("Center X:", center_x_spin)
             
-        self.detail_widgets['p1_radius'] = p1_radius_spin
-        self.details_layout.addRow("P1 Radius:", p1_radius_spin)
+            center_y_spin = QDoubleSpinBox()
+            center_y_spin.setRange(-10000.0, 10000.0)
+            center_y_spin.setDecimals(1)
+            center_y_spin.setValue(wheel.center.y())
+            self.detail_widgets['center_y'] = center_y_spin
+            new_layout.addRow("Center Y:", center_y_spin)
 
-        # Connect signals (using valueChanged)
-        diameter_spin.valueChanged.connect(
-            partial(self._handle_value_changed, wheel, 'diameter'))
-        center_x_spin.valueChanged.connect(
-            partial(self._handle_value_changed, wheel, 'center_x'))
-        center_y_spin.valueChanged.connect(
-            partial(self._handle_value_changed, wheel, 'center_y'))
-        speed_ratio_spin.valueChanged.connect(
-            partial(self._handle_value_changed, wheel, 'speed_ratio'))
-        rotation_rate_spin.valueChanged.connect(
-            partial(self._handle_value_changed, wheel, 'rotation_rate'))
+            speed_ratio_spin = QDoubleSpinBox()
+            speed_ratio_spin.setRange(-100.0, 100.0)
+            speed_ratio_spin.setDecimals(2)
+            speed_ratio_spin.setValue(wheel.speed_ratio)
+            self.detail_widgets['speed_ratio'] = speed_ratio_spin
+            new_layout.addRow("Speed Ratio:", speed_ratio_spin)
 
-        self.details_section.setVisible(True)
-        
+            rotation_rate_spin = QDoubleSpinBox()
+            rotation_rate_spin.setRange(-1000.0, 1000.0)
+            rotation_rate_spin.setDecimals(1)
+            rotation_rate_spin.setValue(wheel.rotation_rate)
+            self.detail_widgets['rotation_rate'] = rotation_rate_spin
+            new_layout.addRow("Rotation Rate (°/s):", rotation_rate_spin)
+
+            # --- Connection Point 'p1' Radius ---
+            p1_radius_spin = QDoubleSpinBox()
+            p1_radius_spin.setRange(0.0, 10000.0)
+            p1_radius_spin.setDecimals(1)
+            p1_radius_spin.setEnabled(False)
+            p1_radius_spin.setToolTip("Radius for connection point 'p1'")
+            if 'p1' in wheel.connection_points:
+                p1_radius_spin.setValue(wheel.connection_points['p1'].radius)
+                p1_radius_spin.setEnabled(True)
+                p1_radius_spin.valueChanged.connect(
+                    partial(self._handle_value_changed, wheel, 'p1_radius'))
+            else:
+                p1_radius_spin.setValue(0.0)
+            self.detail_widgets['p1_radius'] = p1_radius_spin
+            new_layout.addRow("P1 Radius:", p1_radius_spin)
+
+            # Connect signals 
+            diameter_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'diameter'))
+            center_x_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'center_x'))
+            center_y_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'center_y'))
+            speed_ratio_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'speed_ratio'))
+            rotation_rate_spin.valueChanged.connect(partial(self._handle_value_changed, wheel, 'rotation_rate'))
+            # --- End Populate --- 
+
+            # Set the new widget as the content for the details section
+            self.details_section.setContentWidget(detail_container)
+            self.details_section.setVisible(True)
+            
+        except Exception as e:
+            print(f"ERROR building wheel details UI for {wheel.id}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Optionally hide section or show error message in UI
+            self.details_section.setVisible(False)
+            # Remove previous attempts
+            # self.details_layout.activate()
+            # self.details_section.adjustSize()
+            # Try updating the content_area within the section
+            self.details_section.content_area.adjustSize()
+            self.details_section.content_area.update()
+
     def show_rod_details(self, rod: Rod, components_dict: Dict):
         """Display editable details for the selected rod."""
-        self._clear_details_layout()
-        self.update_components_dict(components_dict) # Ensure dict is updated
-        self.details_section.toggle_button.setText(f"Rod Details (ID: {rod.id})")
+        try:
+            self._clear_details_layout() # Clear old content widget
+            self.update_components_dict(components_dict) 
+            self.details_section.toggle_button.setText(f"Rod Details (ID: {rod.id})")
 
-        # Use QDoubleSpinBox for numerical values
-        length_spin = QDoubleSpinBox() # Maybe make read-only?
-        length_spin.setRange(0.0, 10000.0)
-        length_spin.setDecimals(1)
-        length_spin.setValue(rod.length)
-        length_spin.setReadOnly(True) # Length determined by endpoints
-        length_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons) # Hide buttons if read-only
-        self.detail_widgets['length'] = length_spin
-        self.details_layout.addRow("Length:", length_spin)
+            # Create a new container widget and layout for the details
+            detail_container = QWidget()
+            new_layout = QFormLayout(detail_container) # Set layout on container
+            self.detail_widgets = {} # Reset detail widgets dict
 
-        start_x_spin = QDoubleSpinBox()
-        start_x_spin.setRange(-10000.0, 10000.0)
-        start_x_spin.setDecimals(1)
-        start_x_spin.setValue(rod.start_pos.x())
-        self.detail_widgets['start_x'] = start_x_spin
-        self.details_layout.addRow("Start X:", start_x_spin)
-        
-        start_y_spin = QDoubleSpinBox()
-        start_y_spin.setRange(-10000.0, 10000.0)
-        start_y_spin.setDecimals(1)
-        start_y_spin.setValue(rod.start_pos.y())
-        self.detail_widgets['start_y'] = start_y_spin
-        self.details_layout.addRow("Start Y:", start_y_spin)
-        
-        end_x_spin = QDoubleSpinBox()
-        end_x_spin.setRange(-10000.0, 10000.0)
-        end_x_spin.setDecimals(1)
-        end_x_spin.setValue(rod.end_pos.x())
-        self.detail_widgets['end_x'] = end_x_spin
-        self.details_layout.addRow("End X:", end_x_spin)
-        
-        end_y_spin = QDoubleSpinBox()
-        end_y_spin.setRange(-10000.0, 10000.0)
-        end_y_spin.setDecimals(1)
-        end_y_spin.setValue(rod.end_pos.y())
-        self.detail_widgets['end_y'] = end_y_spin
-        self.details_layout.addRow("End Y:", end_y_spin)
+            # --- Populate new_layout --- 
+            length_spin = QDoubleSpinBox()
+            length_spin.setRange(0.0, 10000.0)
+            length_spin.setDecimals(1)
+            length_spin.setValue(rod.length)
+            length_spin.setReadOnly(True)
+            length_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+            self.detail_widgets['length'] = length_spin
+            new_layout.addRow("Length:", length_spin)
 
-        # --- Start/End Connection Display ---
-        start_conn_label = QLabel("<Not Connected>")
-        start_conn_label.setWordWrap(True)
-        if rod.start_connection:
-            formatted_conn = _format_connection_target(rod.start_connection, components_dict)
-            start_conn_label.setText(formatted_conn if formatted_conn else "<Error>")
-        self.details_layout.addRow("Start Conn:", start_conn_label)
-        self.detail_widgets['start_conn_label'] = start_conn_label # Store label
+            start_x_spin = QDoubleSpinBox()
+            start_x_spin.setRange(-10000.0, 10000.0)
+            start_x_spin.setDecimals(1)
+            start_x_spin.setValue(rod.start_pos.x())
+            self.detail_widgets['start_x'] = start_x_spin
+            new_layout.addRow("Start X:", start_x_spin)
+            
+            start_y_spin = QDoubleSpinBox()
+            start_y_spin.setRange(-10000.0, 10000.0)
+            start_y_spin.setDecimals(1)
+            start_y_spin.setValue(rod.start_pos.y())
+            self.detail_widgets['start_y'] = start_y_spin
+            new_layout.addRow("Start Y:", start_y_spin)
+            
+            end_x_spin = QDoubleSpinBox()
+            end_x_spin.setRange(-10000.0, 10000.0)
+            end_x_spin.setDecimals(1)
+            end_x_spin.setValue(rod.end_pos.x())
+            self.detail_widgets['end_x'] = end_x_spin
+            new_layout.addRow("End X:", end_x_spin)
+            
+            end_y_spin = QDoubleSpinBox()
+            end_y_spin.setRange(-10000.0, 10000.0)
+            end_y_spin.setDecimals(1)
+            end_y_spin.setValue(rod.end_pos.y())
+            self.detail_widgets['end_y'] = end_y_spin
+            new_layout.addRow("End Y:", end_y_spin)
 
-        end_conn_label = QLabel("<Not Connected>")
-        end_conn_label.setWordWrap(True)
-        if rod.end_connection:
-            formatted_conn = _format_connection_target(rod.end_connection, components_dict)
-            end_conn_label.setText(formatted_conn if formatted_conn else "<Error>")
-        self.details_layout.addRow("End Conn:", end_conn_label)
-        self.detail_widgets['end_conn_label'] = end_conn_label # Store label
+            # Start/End Connection Display 
+            start_conn_label = QLabel("<Not Connected>")
+            start_conn_label.setWordWrap(True)
+            if rod.start_connection:
+                formatted_conn = _format_connection_target(rod.start_connection, components_dict)
+                start_conn_label.setText(formatted_conn if formatted_conn else "<Error>")
+            new_layout.addRow("Start Conn:", start_conn_label)
+            self.detail_widgets['start_conn_label'] = start_conn_label
 
-        # --- Mid-point Connection ---
-        self.has_mid_point_checkbox = QCheckBox()
-        self.mid_dist_spin = QDoubleSpinBox()
-        self.mid_dist_spin.setRange(0.0, 10000.0) # Max length? Should update dynamically?
-        self.mid_dist_spin.setDecimals(1)
-        self.mid_dist_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
-        
-        mid_conn_label = QLabel("N/A") # Default text
-        mid_conn_label.setWordWrap(True) # Allow text wrapping
-        
-        if rod.mid_point_connection:
-            target_comp_id, target_point_id = rod.mid_point_connection
-            target_comp = components_dict.get(target_comp_id)
-            if target_comp:
-                comp_type_str = "Wheel" if isinstance(target_comp, Wheel) else "Rod"
-                mid_conn_label.setText(f"{comp_type_str} {target_comp_id} :: {target_point_id}")
+            end_conn_label = QLabel("<Not Connected>")
+            end_conn_label.setWordWrap(True)
+            if rod.end_connection:
+                formatted_conn = _format_connection_target(rod.end_connection, components_dict)
+                end_conn_label.setText(formatted_conn if formatted_conn else "<Error>")
+            new_layout.addRow("End Conn:", end_conn_label)
+            self.detail_widgets['end_conn_label'] = end_conn_label
+
+            # Mid-point Connection 
+            has_mid_point_checkbox = QCheckBox()
+            mid_dist_spin = QDoubleSpinBox()
+            mid_dist_spin.setRange(0.0, 10000.0) 
+            mid_dist_spin.setDecimals(1)
+            mid_dist_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+            mid_conn_label = QLabel("N/A")
+            mid_conn_label.setWordWrap(True)
+            if rod.mid_point_connection:
+                target_comp_id, target_point_id = rod.mid_point_connection
+                target_comp = components_dict.get(target_comp_id)
+                if target_comp:
+                    comp_type_str = "Wheel" if isinstance(target_comp, Wheel) else "Rod"
+                    mid_conn_label.setText(f"{comp_type_str} {target_comp_id} :: {target_point_id}")
+                else:
+                    mid_conn_label.setText(f"Missing Comp {target_comp_id}")
+            if rod.mid_point_distance is not None:
+                has_mid_point_checkbox.setChecked(True)
+                mid_dist_spin.setValue(rod.mid_point_distance)
+                mid_dist_spin.setEnabled(True)
             else:
-                mid_conn_label.setText(f"Missing Comp {target_comp_id}")
-        
-        if rod.mid_point_distance is not None:
-            self.has_mid_point_checkbox.setChecked(True)
-            self.mid_dist_spin.setValue(rod.mid_point_distance)
-            self.mid_dist_spin.setEnabled(True)
-            # Keep mid_conn_label visible if mid_point exists, even if not connected yet
-        else:
-             self.has_mid_point_checkbox.setChecked(False)
-             self.mid_dist_spin.setValue(0.0)
-             self.mid_dist_spin.setEnabled(False)
-             mid_conn_label.setText("N/A") # Explicitly set back to N/A if no mid-point
-        
-        self.detail_widgets['has_mid_point'] = self.has_mid_point_checkbox
-        self.detail_widgets['mid_dist_spin'] = self.mid_dist_spin 
-        self.detail_widgets['mid_conn_label'] = mid_conn_label # Store label if needed
+                 has_mid_point_checkbox.setChecked(False)
+                 mid_dist_spin.setValue(0.0)
+                 mid_dist_spin.setEnabled(False)
+                 mid_conn_label.setText("N/A")
+            self.detail_widgets['has_mid_point'] = has_mid_point_checkbox
+            self.detail_widgets['mid_dist_spin'] = mid_dist_spin 
+            self.detail_widgets['mid_conn_label'] = mid_conn_label
+            new_layout.addRow("Has Mid-Point:", has_mid_point_checkbox)
+            new_layout.addRow("Mid Dist:", mid_dist_spin)
+            new_layout.addRow("Mid Conn:", mid_conn_label)
+            
+            # Pen Position 
+            has_pen_checkbox = QCheckBox()
+            pen_distance_spin = QDoubleSpinBox()
+            pen_distance_spin.setRange(0.0, 10000.0)
+            pen_distance_spin.setDecimals(1)
+            pen_distance_spin.setEnabled(False)
+            if rod.pen_distance_from_start is not None:
+                has_pen_checkbox.setChecked(True)
+                pen_distance_spin.setValue(rod.pen_distance_from_start)
+                pen_distance_spin.setEnabled(True)
+            else:
+                 has_pen_checkbox.setChecked(False)
+                 pen_distance_spin.setValue(0.0)
+                 pen_distance_spin.setEnabled(False)
+            self.detail_widgets['has_pen'] = has_pen_checkbox
+            self.detail_widgets['pen_distance_from_start'] = pen_distance_spin
+            new_layout.addRow("Has Pen:", has_pen_checkbox)
+            new_layout.addRow("Pen Distance:", pen_distance_spin)
 
-        self.details_layout.addRow("Has Mid-Point:", self.has_mid_point_checkbox)
-        self.details_layout.addRow("Mid Dist:", self.mid_dist_spin)
-        self.details_layout.addRow("Mid Conn:", mid_conn_label)
-        
-        # --- Pen Position ---
-        self.has_pen_checkbox = QCheckBox()
-        self.pen_distance_spin = QDoubleSpinBox()
-        self.pen_distance_spin.setRange(0.0, 10000.0) # Can be anywhere along length
-        self.pen_distance_spin.setDecimals(1)
-        self.pen_distance_spin.setEnabled(False) # Disabled by default
-        
-        if rod.pen_distance_from_start is not None:
-            self.has_pen_checkbox.setChecked(True)
-            self.pen_distance_spin.setValue(rod.pen_distance_from_start)
-            self.pen_distance_spin.setEnabled(True)
-        else:
-             self.has_pen_checkbox.setChecked(False)
-             self.pen_distance_spin.setValue(0.0) # Default value when no pen
-             self.pen_distance_spin.setEnabled(False)
+            # Connect signals
+            start_x_spin.valueChanged.connect(partial(self._handle_value_changed, rod, 'start_x'))
+            start_y_spin.valueChanged.connect(partial(self._handle_value_changed, rod, 'start_y'))
+            end_x_spin.valueChanged.connect(partial(self._handle_value_changed, rod, 'end_x'))
+            end_y_spin.valueChanged.connect(partial(self._handle_value_changed, rod, 'end_y'))
+            has_pen_checkbox.toggled.connect(partial(self._handle_pen_toggled, rod))
+            pen_distance_spin.valueChanged.connect(partial(self._handle_value_changed, rod, 'pen_distance_from_start'))
+            mid_dist_spin.valueChanged.connect(partial(self._handle_value_changed, rod, 'mid_point_distance'))
+            has_mid_point_checkbox.toggled.connect(partial(self._handle_mid_point_toggled, rod))
+            # --- End Populate ---
 
-        self.detail_widgets['has_pen'] = self.has_pen_checkbox
-        self.detail_widgets['pen_distance_from_start'] = self.pen_distance_spin
-        self.details_layout.addRow("Has Pen:", self.has_pen_checkbox)
-        self.details_layout.addRow("Pen Distance:", self.pen_distance_spin)
+            # Set the new widget as the content for the details section
+            self.details_section.setContentWidget(detail_container)
+            self.details_section.setVisible(True)
 
-        # Connect signals
-        start_x_spin.valueChanged.connect(
-            partial(self._handle_value_changed, rod, 'start_x'))
-        start_y_spin.valueChanged.connect(
-            partial(self._handle_value_changed, rod, 'start_y'))
-        end_x_spin.valueChanged.connect(
-            partial(self._handle_value_changed, rod, 'end_x'))
-        end_y_spin.valueChanged.connect(
-            partial(self._handle_value_changed, rod, 'end_y'))
-        # Connect pen signals
-        self.has_pen_checkbox.toggled.connect(
-            partial(self._handle_pen_toggled, rod))
-        self.pen_distance_spin.valueChanged.connect(
-            partial(self._handle_value_changed, rod, 'pen_distance_from_start'))
-        # Connect mid-point distance signal
-        self.mid_dist_spin.valueChanged.connect(
-            partial(self._handle_value_changed, rod, 'mid_point_distance'))
-        # Connect mid-point checkbox signal
-        self.has_mid_point_checkbox.toggled.connect(
-            partial(self._handle_mid_point_toggled, rod))
-
-        self.details_section.setVisible(True)
+        except Exception as e:
+            print(f"ERROR building rod details UI for {rod.id}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Optionally hide section or show error message in UI
+            self.details_section.setVisible(False)
+            # Remove previous attempts
+            # self.details_layout.activate()
+            # self.details_section.adjustSize()
+            # Try updating the content_area within the section
+            self.details_section.content_area.adjustSize()
+            self.details_section.content_area.update()
 
     def _handle_value_changed(self, component, property_name, value):
         """Generic handler for parameter changes in the details panel."""

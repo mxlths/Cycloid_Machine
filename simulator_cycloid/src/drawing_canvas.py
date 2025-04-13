@@ -1049,49 +1049,19 @@ class DrawingCanvas(QWidget):
         # ... (old logic) ...
 
     def generate_image(self, filename: str, width_px: int, height_px: int, line_color: str = "black", line_width: int = 1):
-        """Generates an image of the pen path using Pillow, calculating path via SymPy."""
+        """Generates an image of the pen path using Pillow, using the pre-calculated self.pen_path_points."""
         
-        # --- Find Pen Rod --- 
-        pen_rod = None
-        for rod in self.rods:
-            if rod.pen_distance_from_start is not None:
-                pen_rod = rod
-                break
-        
-        if not pen_rod:
-             print("No pen rod designated.")
-             return
-             
-        # --- Calculate Path using SymPy --- 
-        print("Requesting path calculation from SymPy solver...")
-        # Define simulation parameters (example values, make configurable later)
-        sim_duration = 10.0 # seconds
-        sim_steps = 600    # number of points
-        
-        try:
-             calculated_relative_path = calculate_path_sympy(
-                 wheels=self.wheels,
-                 rods=self.rods,
-                 canvas_wheel=self.canvas_wheel,
-                 pen_rod_id=pen_rod.id,
-                 pen_distance_from_start=pen_rod.pen_distance_from_start,
-                 duration=sim_duration,
-                 steps=sim_steps,
-                 components_dict=self.components_by_id
-             )
-        except Exception as e:
-             print(f"ERROR during SymPy path calculation: {e}")
-             return
-             
-        # Use the calculated path (currently dummy data from solver)
-        path_to_draw = calculated_relative_path
+        # --- Use the pre-calculated path stored in the canvas --- 
+        path_to_draw = self.pen_path_points # <-- USE STORED PATH
         
         if not path_to_draw or len(path_to_draw) < 2:
-            print("No path data generated (or path too short) to create image.")
-            return
+            print("No path data available (or path too short) to create image.")
+            # Optionally add a message to status bar?
+            # self.parent().statusBar().showMessage("Error: No path data to generate image.", 3000)
+            return False # Indicate failure
 
-        # --- Image Generation (using calculated path) --- 
-        print(f"Generating image from {len(path_to_draw)} calculated points...")
+        # --- Image Generation (using path_to_draw) --- 
+        print(f"Generating image from {len(path_to_draw)} stored points...") # <-- UPDATED PRINT
         # 1. Calculate bounds of path_to_draw (these are relative coords if canvas_wheel exists)
         min_x = min(p.x() for p in path_to_draw)
         max_x = max(p.x() for p in path_to_draw)
@@ -1142,8 +1112,10 @@ class DrawingCanvas(QWidget):
         try:
             image.save(filename)
             print(f"Image successfully saved to {filename}")
+            return True # Indicate success
         except Exception as e:
             print(f"Error saving image to {filename}: {e}")
+            return False # Indicate failure
 
     def add_canvas_wheel(self, center: QPointF = QPointF(0,0), diameter: float = 500.0):
         """Adds a special wheel representing the canvas. Only one allowed."""
@@ -1155,8 +1127,13 @@ class DrawingCanvas(QWidget):
         new_id = self._next_component_id
         self._next_component_id += 1
         
-        # Create the canvas wheel
-        canvas_wheel_obj = Wheel(id=new_id, center=center, diameter=diameter)
+        # Create the canvas wheel, explicitly setting the flag
+        canvas_wheel_obj = Wheel(
+            id=new_id, 
+            center=center, 
+            diameter=diameter, 
+            is_canvas=True # <-- ADDED: Explicitly set the flag
+        )
         # Maybe add a default connection point at center? Or none?
         # canvas_wheel_obj.add_connection_point('center', 0.0) 
         

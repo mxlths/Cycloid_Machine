@@ -1,4 +1,5 @@
 import sys
+import os
 from PyQt6.QtWidgets import QApplication, QMainWindow
 from main_window import MainWindow  # Assuming MainWindow is in main_window.py
 # Removed component imports - no longer needed here
@@ -20,8 +21,12 @@ def main():
     app = QApplication(sys.argv)
     
     # --- Load Configuration --- 
-    # Load the actual config file, assuming it's in the simulator_cycloid directory
-    config_file = "simulator_cycloid/config.xml" # Changed from dummy_config.xml
+    # Get the directory where main.py resides
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Construct the path to config.xml relative to the script's parent directory
+    config_file = os.path.join(script_dir, '..', 'config.xml')
+    
+    # Load the actual config file
     try:
         machine_config = load_config_from_xml(config_file)
     except Exception as e:

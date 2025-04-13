@@ -20,7 +20,7 @@
             <diameter>250.0</diameter>
             <speed_control>
                 <base_ratio>1.0</base_ratio>
-                <rotation_rate>30.0</rotation_rate>
+                <rotation_rate>180.0</rotation_rate>
             </speed_control>
             <connection_points>
                 <point id="p1" radius="100.0"/>
@@ -30,12 +30,20 @@
             <center_position x="312.0" y="567.0"/>
             <diameter>250.0</diameter>
             <speed_control>
-                <base_ratio>-1.0</base_ratio>
+                <base_ratio>1.0</base_ratio>
                 <rotation_rate>179.0</rotation_rate>
             </speed_control>
             <connection_points>
                 <point id="p1" radius="100.0"/>
             </connection_points>
+        </wheel>
+        <wheel id="14">
+            <center_position x="526.0" y="178.0"/>
+            <diameter>500.0</diameter>
+            <speed_control>
+                <base_ratio>1.0</base_ratio>
+                <rotation_rate>160.0</rotation_rate>
+            </speed_control>
         </wheel>
     </drive_wheels>
     <linkages>
