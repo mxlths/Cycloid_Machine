@@ -71,6 +71,7 @@ def generate_xml_tree(wheels: List[Wheel], rods: List[Rod], components_dict) -> 
         
         speed_control_wheel = _add_sub_element(wheel_elem, 'speed_control')
         _add_sub_element(speed_control_wheel, 'base_ratio', str(wheel.speed_ratio))
+        _add_sub_element(speed_control_wheel, 'rotation_rate', str(wheel.rotation_rate))
         # TODO: Add modulation saving if implemented
         
         if wheel.connection_points:

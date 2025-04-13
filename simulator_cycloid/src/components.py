@@ -95,7 +95,8 @@ class Wheel:
     center: QPointF
     diameter: float
     id: int # ID is now assigned externally
-    speed_ratio: float = 1.0
+    speed_ratio: float = 1.0 # TODO: Consider replacing this with rotation_rate
+    rotation_rate: float = 0.0 # Degrees per simulation time step
     # Store multiple named connection points
     connection_points: Dict[str, ConnectionPoint] = field(default_factory=dict)
     current_angle_deg: float = 0.0 # Track the wheel's rotation

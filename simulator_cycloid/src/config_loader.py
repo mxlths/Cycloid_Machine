@@ -13,6 +13,7 @@ from drawing_canvas import DrawingCanvas
 @dataclass
 class SpeedControlConfig:
     base_ratio: float = 1.0
+    rotation_rate: float = 0.0
     modulation_type: str = 'none'
     frequency: float = 0.0
     amplitude: float = 0.0
@@ -65,15 +66,16 @@ class MachineConfig:
 def _parse_speed_control(element: ET.Element) -> SpeedControlConfig:
     """Helper to parse speed control elements."""
     base_ratio = float(element.findtext('base_ratio', '1.0'))
+    rotation_rate = float(element.findtext('rotation_rate', '0.0'))
     mod_element = element.find('modulation')
     if mod_element is not None:
         mod_type = mod_element.findtext('type', 'none')
         frequency = float(mod_element.findtext('frequency', '0.0'))
         amplitude = float(mod_element.findtext('amplitude', '0.0'))
         phase = float(mod_element.findtext('phase', '0.0'))
-        return SpeedControlConfig(base_ratio, mod_type, frequency, amplitude, phase)
+        return SpeedControlConfig(base_ratio, rotation_rate, mod_type, frequency, amplitude, phase)
     else:
-        return SpeedControlConfig(base_ratio=base_ratio)
+        return SpeedControlConfig(base_ratio=base_ratio, rotation_rate=rotation_rate)
 
 def _parse_connection_points(element: ET.Element) -> Dict[str, ConnectionPoint]:
     """Helper to parse connection points for a wheel."""
@@ -365,6 +367,7 @@ def populate_canvas_from_config(canvas: DrawingCanvas, config: MachineConfig):
             center=wheel_config.center, 
             diameter=wheel_config.diameter,
             speed_ratio=wheel_config.speed_control.base_ratio, # Ignoring modulation for now
+            rotation_rate=wheel_config.speed_control.rotation_rate, # Added rotation rate
             # Add connection points directly from config
             connection_points=wheel_config.connection_points.copy() 
         )

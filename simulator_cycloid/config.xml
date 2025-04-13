@@ -16,20 +16,22 @@
     </canvas>
     <drive_wheels>
         <wheel id="1">
-            <center_position x="196.0" y="245.0"/>
+            <center_position x="65.0" y="254.0"/>
             <diameter>250.0</diameter>
             <speed_control>
                 <base_ratio>1.0</base_ratio>
+                <rotation_rate>30.0</rotation_rate>
             </speed_control>
             <connection_points>
                 <point id="p1" radius="100.0"/>
             </connection_points>
         </wheel>
         <wheel id="2">
-            <center_position x="507.0" y="473.0"/>
+            <center_position x="312.0" y="567.0"/>
             <diameter>250.0</diameter>
             <speed_control>
                 <base_ratio>-1.0</base_ratio>
+                <rotation_rate>179.0</rotation_rate>
             </speed_control>
             <connection_points>
                 <point id="p1" radius="100.0"/>
@@ -38,22 +40,21 @@
     </drive_wheels>
     <linkages>
         <rod id="12">
-            <length>329.68839073599537</length>
-            <start_position x="296.0" y="245.0"/>
-            <end_position x="624.5423315432633" y="272.46582185565916"/>
+            <length>306.8744916427394</length>
+            <start_position x="165.0" y="254.0"/>
+            <end_position x="471.2908533179406" y="272.9173675430145"/>
             <connections>
                 <start_point connected_to="wheel_1_point_p1"/>
-                <end_point connected_to="rod_12_end"/>
+                <end_point connected_to="rod_13_mid"/>
             </connections>
         </rod>
         <rod id="13">
-            <length>367.5758425141674</length>
-            <start_position x="607.0" y="473.0"/>
-            <end_position x="641.0" y="107.0"/>
+            <length>505.98023676819633</length>
+            <start_position x="412.0" y="567.0"/>
+            <end_position x="512.0" y="71.0"/>
             <connections>
                 <start_point connected_to="wheel_2_point_p1"/>
-                <end_point connected_to="rod_13_end"/>
-                <mid_point distance_from_start="201.3"/>
+                <mid_point distance_from_start="300.0"/>
             </connections>
             <pen_position distance_from_start="375.0"/>
         </rod>

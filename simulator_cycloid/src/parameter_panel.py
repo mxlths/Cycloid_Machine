@@ -1,9 +1,9 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, QDoubleSpinBox,
-                               QPushButton, QFrame, QScrollArea, QButtonGroup, QFormLayout, QSizePolicy, QLayout, QCheckBox)
+                               QPushButton, QFrame, QScrollArea, QButtonGroup, QFormLayout, QSizePolicy, QLayout, QCheckBox, QSpinBox, QHBoxLayout)
 from PyQt6.QtCore import Qt, pyqtSignal, QPointF
-from PyQt6.QtGui import QFocusEvent
+from PyQt6.QtGui import QFocusEvent, QPalette, QColor
 from components import Wheel, Rod
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Union
 from functools import partial
 
 # Helper to format connection tuples back to strings
@@ -39,7 +39,7 @@ def _format_connection_target(connection: Optional[Tuple[int, str]], components_
 #     ...
 # --- End Debugging Subclass ---
 
-class CollapsibleSection(QWidget):
+class CollapsibleSection(QFrame):
     def __init__(self, title, parent=None):
         super().__init__(parent)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -95,13 +95,18 @@ class ParameterPanel(QFrame):
     # Signal when add rod button is clicked
     add_rod_requested = pyqtSignal()
     # Signal when a rod is assigned/unassigned the pen
-    pen_assigned = pyqtSignal(object, bool) # Emits (rod, is_pen_now)
+    pen_assigned = pyqtSignal(int, bool) # Emits (rod_id, is_pen_now)
     # Signals for simulation control
     start_simulation_requested = pyqtSignal()
     stop_simulation_requested = pyqtSignal()
     
     # Signal when a parameter is changed (placeholder)
     parameter_changed = pyqtSignal(object, str, object) # component, param_name, value
+    
+    # Signal for image generation
+    image_generate_requested = pyqtSignal(str, int, int, str, int) # filename, w, h, color, line_width
+    # Signal to add canvas wheel
+    add_canvas_requested = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -141,6 +146,11 @@ class ParameterPanel(QFrame):
         # TODO: Add wheel list/details placeholders here later
         self.wheels_section.setContentLayout(wheels_layout) # Set layout
         
+        # Add Canvas Button
+        self._add_canvas_button = QPushButton("Add Canvas")
+        self._add_canvas_button.clicked.connect(self.add_canvas_requested.emit) # Emit signal
+        wheels_layout.addWidget(self._add_canvas_button)
+        
         self._add_rod_button = QPushButton("Add Rod")
         rods_layout = QVBoxLayout() # Create layout for rod section content
         rods_layout.addWidget(self._add_rod_button)
@@ -177,13 +187,15 @@ class ParameterPanel(QFrame):
         # Add stretch to push everything up
         self.container_layout.addStretch()
         
+        # Store references to input widgets
+        self.detail_widgets = {}
+        self.components_dict: Dict[int, Union[Wheel, Rod]] = {} # Add initialization
+
     def _setup_details_section(self):
         # Create the layout that will hold the details
         self.details_layout = QFormLayout()
         # Set this layout onto the content area of the details section
         self.details_section.setContentLayout(self.details_layout)
-        # Store references to input widgets
-        self.detail_widgets = {}
 
     def _clear_details_layout(self):
         """Remove all widgets from the details layout."""
@@ -203,6 +215,7 @@ class ParameterPanel(QFrame):
     def show_wheel_details(self, wheel: Wheel, components_dict: Dict):
         """Display editable details for the selected wheel."""
         self._clear_details_layout()
+        self.update_components_dict(components_dict) # Ensure dict is updated
         self.details_section.toggle_button.setText(f"Wheel Details (ID: {wheel.id})")
 
         # Use QDoubleSpinBox for numerical values
@@ -234,6 +247,13 @@ class ParameterPanel(QFrame):
         self.detail_widgets['speed_ratio'] = speed_ratio_spin
         self.details_layout.addRow("Speed Ratio:", speed_ratio_spin)
 
+        rotation_rate_spin = QDoubleSpinBox()
+        rotation_rate_spin.setRange(-1000.0, 1000.0) # Degrees per second
+        rotation_rate_spin.setDecimals(1)
+        rotation_rate_spin.setValue(wheel.rotation_rate)
+        self.detail_widgets['rotation_rate'] = rotation_rate_spin
+        self.details_layout.addRow("Rotation Rate (°/s):", rotation_rate_spin)
+
         # --- Connection Point 'p1' Radius ---
         p1_radius_spin = QDoubleSpinBox()
         p1_radius_spin.setRange(0.0, 10000.0) # Radius >= 0
@@ -254,13 +274,6 @@ class ParameterPanel(QFrame):
         self.detail_widgets['p1_radius'] = p1_radius_spin
         self.details_layout.addRow("P1 Radius:", p1_radius_spin)
 
-        # TODO: Add UI for managing multiple connection points here
-        # For now, remove the old single connection point inputs
-        # conn_radius_spin = QDoubleSpinBox()
-        # ... (removed code for conn_radius_spin)
-        # conn_phase_spin = QDoubleSpinBox()
-        # ... (removed code for conn_phase_spin)
-        
         # Connect signals (using valueChanged)
         diameter_spin.valueChanged.connect(
             partial(self._handle_value_changed, wheel, 'diameter'))
@@ -270,14 +283,15 @@ class ParameterPanel(QFrame):
             partial(self._handle_value_changed, wheel, 'center_y'))
         speed_ratio_spin.valueChanged.connect(
             partial(self._handle_value_changed, wheel, 'speed_ratio'))
-        # conn_radius_spin.valueChanged.connect(...)
-        # conn_phase_spin.valueChanged.connect(...)
+        rotation_rate_spin.valueChanged.connect(
+            partial(self._handle_value_changed, wheel, 'rotation_rate'))
 
         self.details_section.setVisible(True)
         
     def show_rod_details(self, rod: Rod, components_dict: Dict):
         """Display editable details for the selected rod."""
         self._clear_details_layout()
+        self.update_components_dict(components_dict) # Ensure dict is updated
         self.details_section.toggle_button.setText(f"Rod Details (ID: {rod.id})")
 
         # Use QDoubleSpinBox for numerical values
@@ -417,36 +431,43 @@ class ParameterPanel(QFrame):
 
         self.details_section.setVisible(True)
 
-    def _handle_value_changed(self, component, param_name, value):
-        # Update the component's attribute directly
-        if param_name == 'center_x':
-            center = component.center
-            component.center = QPointF(value, center.y())
-        elif param_name == 'center_y':
-            center = component.center
-            component.center = QPointF(center.x(), value)
-        elif param_name == 'start_x':
-            start = component.start_pos
-            component.start_pos = QPointF(value, start.y())
-        elif param_name == 'start_y':
-            start = component.start_pos
-            component.start_pos = QPointF(start.x(), value)
-        elif param_name == 'end_x':
-            end = component.end_pos
-            component.end_pos = QPointF(value, end.y())
-        elif param_name == 'end_y':
-            end = component.end_pos
-            component.end_pos = QPointF(end.x(), value)
-        elif param_name == 'pen_distance_from_start':
-            # Explicitly handle pen distance to ensure it's properly updated
-            if hasattr(component, 'pen_distance_from_start'):
-                component.pen_distance_from_start = float(value)
+    def _handle_value_changed(self, component, property_name, value):
+        """Generic handler for parameter changes in the details panel."""
+        # Find the actual component from the stored reference
+        actual_component = None
+        if hasattr(component, 'id') and component.id in self.components_dict:
+            actual_component = self.components_dict[component.id]
         else:
-            # For simple attributes like mid_point_distance, etc.
-            setattr(component, param_name, value)
+            print(f"Warning: Component {component} not found in dict during update.")
+            return # Cannot update if component reference is stale
+
+        # *** REMOVED direct component updates from ParameterPanel ***
+        # ParameterPanel should only emit the signal with the new value.
+        # MainWindow is responsible for applying the change to the component model.
         
-        # Then emit the parameter_changed signal
-        self.parameter_changed.emit(component, param_name, value)
+        # Just emit the signal with the component reference, property name, and NEW value from the UI
+        if actual_component:
+             try:
+                 # Special case: emit 'propagate_constraints' if needed
+                 propagate_needed = property_name in ('center_x', 'center_y', 'p1_radius', 'start_x', 'start_y', 'end_x', 'end_y') 
+                 # Special handling for diameter affecting p1 radius propagation is complex here,
+                 # let MainWindow handle that logic after receiving the basic diameter change signal.
+                 
+                 # Emit the basic parameter change signal
+                 self.parameter_changed.emit(actual_component, property_name, value)
+
+                 # If propagation is needed based on the property name, emit that signal too
+                 # Note: MainWindow will need the original position to know *what* moved.
+                 # This might require rethinking how propagation is triggered.
+                 # For now, let's rely on MainWindow handling propagation based on param_name.
+                 # if propagate_needed:
+                 #     # We don't have original_pos here easily anymore.
+                 #     # MainWindow._on_parameter_changed should handle propagation logic.
+                 #     # self.parameter_changed.emit(actual_component, 'propagate_constraints', ...) 
+                 pass
+
+             except Exception as e:
+                 print(f"Error emitting parameter change signal for {property_name}: {e}")
         
     def _handle_pen_toggled(self, rod: Rod, checked: bool):
         """Handle the 'Has Pen' checkbox being toggled."""
@@ -465,13 +486,13 @@ class ParameterPanel(QFrame):
                  self.pen_distance_spin.setValue(current_dist) # Ensure spinbox matches
                  
             # Emit signal to notify MainWindow to clear other pens
-            self.pen_assigned.emit(rod, True)
+            self.pen_assigned.emit(rod.id, True)
             self.parameter_changed.emit(rod, 'pen_distance_from_start', rod.pen_distance_from_start)
         else:
             # Remove pen from this rod
             rod.pen_distance_from_start = None
             # Emit signal to notify the change
-            self.pen_assigned.emit(rod, False)
+            self.pen_assigned.emit(rod.id, False)
             self.parameter_changed.emit(rod, 'pen_distance_from_start', None)
         
     def _handle_mid_point_toggled(self, rod: Rod, checked: bool):
@@ -551,3 +572,33 @@ class ParameterPanel(QFrame):
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.stop_simulation_requested.emit() 
+
+    def update_components_dict(self, components: Dict[int, Union[Wheel, Rod]]):
+        """Update the internal reference to the components dictionary."""
+        self.components_dict = components
+        
+    def _browse_filename(self):
+        """Open a file dialog to select the image save path."""
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Image As",
+            self.image_filename_edit.text(),
+            "PNG Images (*.png);;JPEG Images (*.jpg *.jpeg);;All Files (*)"
+        )
+        if filename:
+            self.image_filename_edit.setText(filename)
+            
+    def _on_generate_image(self):
+        """Emit signal to request image generation."""
+        filename = self.image_filename_edit.text()
+        width = self.image_width_spin.value()
+        height = self.image_height_spin.value()
+        line_width = self.image_line_width_spin.value()
+        line_color = "black" # Hardcoded for now
+        
+        if filename:
+            self.image_generate_requested.emit(filename, width, height, line_color, line_width)
+        else:
+            print("Error: Please specify a filename for the image.")
+            # Optionally show a message box to the user
+        

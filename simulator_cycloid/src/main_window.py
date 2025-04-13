@@ -137,6 +137,9 @@ class MainWindow(QMainWindow):
         # Connect add wheel button
         self.parameter_panel._add_wheel_button.clicked.connect(self._on_add_wheel)
         
+        # Connect add canvas button
+        self.parameter_panel.add_canvas_requested.connect(self.canvas.add_canvas_wheel)
+        
         # Connect add rod request signal to canvas start_rod_creation
         self.parameter_panel.add_rod_requested.connect(self.canvas.start_rod_creation)
         
@@ -148,6 +151,13 @@ class MainWindow(QMainWindow):
         
         # Connect pen assignment signal
         self.parameter_panel.pen_assigned.connect(self._handle_pen_assignment)
+        
+        # Connect simulation control signals
+        self.parameter_panel.start_simulation_requested.connect(self.canvas.start_simulation)
+        self.parameter_panel.stop_simulation_requested.connect(self.canvas.stop_simulation)
+        
+        # Connect image generation signal
+        self.parameter_panel.image_generate_requested.connect(self.canvas.generate_image)
         
     def _on_snap_changed(self, snap_value: int):
         """Handle snap setting changes"""
@@ -195,6 +205,8 @@ class MainWindow(QMainWindow):
                     component.center.setY(float(new_value))
                 elif param_name == 'speed_ratio':
                     component.speed_ratio = float(new_value)
+                elif param_name == 'rotation_rate':
+                    component.rotation_rate = float(new_value)
                 elif param_name == 'p1_radius':
                     # Update radius of the specific connection point 'p1'
                     if 'p1' in component.connection_points:
