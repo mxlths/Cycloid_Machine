@@ -1,4 +1,6 @@
-Software/Hardware upgrades
+#HARDWARE#
+
+Hardware upgrades
     - Pi Zero 2 W serial control
     - Web interface for Zero 2 W interfaced to serial control
         Flask/Django web server
@@ -12,9 +14,21 @@ Software/Hardware upgrades
     - Consider adding DIL switches for microstepping control. Might not be required once tuning complete.
     - Set current on stepper drivers / get new 128 microstep silent drivers
 
-
-
-
 Transmission upgrades
-    - 2 x UCF204 pillow block bearings with 20mm ground stainless rod connecting them, 60T GT2 pulley mounted to shaft
+    - 2 x UCF204 pillow block bearings with 20mm ground stainless rod connecting them, 60T OR 80T GT2 pulley w. 12MM ID hole mounted to shaft
     - Might required re-design to accomodate height of bearings
+
+#SOFTWARE#
+
+ArduinoCycloid
+    - Build Python interface
+    - Implement better acceleration and deceleration 
+    - Build new version of the software with the LCD and encoder logic removed
+    - Establish how communication between the RasPi and Arduino occurs
+    - Prioritise smooth motion and no skipping for the Arduino side
+    - Implement movement to a particular phase of a wheel for staggering of drawing stages, especially for canvas wheel
+
+Cycloid Simulator
+    - V2.0 built fit for purpose for Arduino control implementation / simulation of machine
+    - No editing required on screen, machines only defined beforehand as XML in separate interface perhaps?
+    - Important to make as accurate as possible to the real world example
