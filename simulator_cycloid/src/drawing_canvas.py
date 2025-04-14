@@ -716,8 +716,15 @@ class DrawingCanvas(QWidget):
             # Reset dragging state regardless of what happened
             self.dragging_point = None
             self.hover_connection = None
-            # --- MODIFIED: Clear screen drag origin --- 
             self.component_drag_origin_screen = None 
+            
+            # --- ADDED: Final propagation call on mouse release --- 
+            # Call propagation one last time to ensure constraints are fully resolved visually
+            # Use None for initial_targets to resolve the current state based on connections
+            print("DEBUG mouseReleaseEvent: Calling final propagation...")
+            self._propagate_constraints(initial_targets=None) 
+            # --- End Added --- 
+            
             # Don't deselect component on release, keep it selected
             # self.selected_component = None 
             # self.component_selected.emit(None)
@@ -942,10 +949,10 @@ class DrawingCanvas(QWidget):
 
     def _propagate_constraints(self, initial_targets: Optional[Dict[Tuple[int, str], QPointF]] = None):
         """Iteratively adjust rod positions based on endpoint and mid-point connections.
-           Uses a two-phase approach within each pass.
+           Uses an immediate-update approach within each pass.
         """
         DEBUG_CONSTRAINTS = True
-        if DEBUG_CONSTRAINTS: print(f"\\n--- Propagating Constraints (Two-Phase: Endpoint + Midpoint) ---")
+        if DEBUG_CONSTRAINTS: print(f"\\n--- Propagating Constraints (Immediate Update Version) ---")
         if DEBUG_CONSTRAINTS: print(f"Initial Targets: {initial_targets}")
 
         # Store intended positions, initialized with current rod positions
@@ -953,197 +960,208 @@ class DrawingCanvas(QWidget):
             rod.id: (QPointF(rod.start_pos), QPointF(rod.end_pos)) for rod in self.rods
         }
 
-        # --- MODIFIED: Increase number of passes --- 
-        num_passes = 500 # Increased from 100
+        num_passes = 500 # Keep increased passes
         max_correction_threshold_sq = (0.1 / self.pixels_per_mm)**2
 
         for pass_num in range(num_passes):
             max_correction_this_pass_sq = 0.0
-            # Get ALL current positions at the START of the pass (Wheels, Rod Ends)
-            # We calculate mid-points dynamically within the pass
-            current_positions = {}
+            # Dictionary to hold the most current positions within THIS pass
+            current_pass_positions = {}
+            # Initialize with wheel positions
             for wheel in self.wheels:
                 for point_id in wheel.connection_points:
                     pos = wheel.get_connection_point_position(point_id)
-                    if pos: current_positions[(wheel.id, point_id)] = pos
+                    if pos: current_pass_positions[(wheel.id, point_id)] = pos
+            # Initialize with rod positions from end of PREVIOUS pass
             for r_id, (r_start, r_end) in intended_rod_positions.items():
-                 current_positions[(r_id, 'start')] = r_start
-                 current_positions[(r_id, 'end')] = r_end
-
-            # Apply initial external targets (these override current positions for this pass)
-            pass_targets = current_positions.copy()
-            if pass_num == 0 and initial_targets:
-                 pass_targets.update(initial_targets)
-
-            # --- PHASE 1: Calculate positions based on ENDPOINT constraints --- 
-            phase1_intended_positions = intended_rod_positions.copy() # Start with previous pass results
-            endpoint_fixed_flags: Dict[int, Tuple[bool, bool]] = {} # Store (start_fixed, end_fixed) flags for phase 2
-
-            for rod in self.rods:
-                rod_id = rod.id
-                current_start, current_end = intended_rod_positions[rod_id]
-                start_conn = rod.start_connection
-                end_conn = rod.end_connection
-                original_length = rod.length
-
-                # Get endpoint targets from pass_targets (start-of-pass state + initial)
-                target_start = None
-                if start_conn and start_conn[1] != 'mid': # Ignore mid targets in phase 1
-                    target_start = pass_targets.get(start_conn)
-
-                target_end = None
-                if end_conn and end_conn[1] != 'mid': # Ignore mid targets in phase 1
-                    target_end = pass_targets.get(end_conn)
-
-                intended_start = QPointF(current_start)
-                intended_end = QPointF(current_end)
-                start_fixed = False
-                end_fixed = False
-
-                if rod.fixed_length:
-                    if target_start and target_end:
-                        intended_start = target_start
-                        vec = target_end - intended_start
-                        dist = math.hypot(vec.x(), vec.y())
-                        if dist > 1e-6: intended_end = intended_start + vec * (original_length / dist)
-                        else: intended_end = intended_start
-                        start_fixed = True
-                        end_fixed = True # Both were targeted
-                    elif target_start:
-                        intended_start = target_start
-                        vec = current_end - intended_start
-                        dist = math.hypot(vec.x(), vec.y())
-                        if dist > 1e-6: intended_end = intended_start + vec * (original_length / dist)
-                        else: intended_end = intended_start
-                        start_fixed = True
-                    elif target_end:
-                        intended_end = target_end
-                        vec = current_start - intended_end
-                        dist = math.hypot(vec.x(), vec.y())
-                        if dist > 1e-6: intended_start = intended_end + vec * (original_length / dist)
-                        else: intended_start = intended_end
-                        end_fixed = True
-                else: # Non-fixed length
-                    if target_start and target_end:
-                        intended_start = target_start
-                        intended_end = target_end
-                        start_fixed = True
-                        end_fixed = True
-                    elif target_start:
-                        intended_start = target_start
-                        start_fixed = True
-                    elif target_end:
-                        intended_end = target_end
-                        end_fixed = True
-                
-                phase1_intended_positions[rod_id] = (intended_start, intended_end)
-                endpoint_fixed_flags[rod_id] = (start_fixed, end_fixed)
-
-            # --- Update positions dictionary AFTER Phase 1 calculations --- 
-            positions_after_phase1 = pass_targets.copy() # Start with pass targets
-            for r_id, (r_start, r_end) in phase1_intended_positions.items():
-                 positions_after_phase1[(r_id, 'start')] = r_start
-                 positions_after_phase1[(r_id, 'end')] = r_end
-                 # Calculate and add mid-points based on Phase 1 results
-                 rod = self.components_by_id.get(r_id) 
+                 current_pass_positions[(r_id, 'start')] = r_start
+                 current_pass_positions[(r_id, 'end')] = r_end
+                 # Calculate and add initial mid-point for this pass
+                 rod = self.components_by_id.get(r_id)
                  if rod and isinstance(rod, Rod) and rod.mid_point_distance is not None:
                      vec = r_end - r_start
                      current_len = math.hypot(vec.x(), vec.y())
                      if current_len > 1e-6:
                          ratio = max(0.0, min(1.0, rod.mid_point_distance / current_len))
                          mid_pos = r_start + vec * ratio
-                         positions_after_phase1[(r_id, 'mid')] = mid_pos
+                         current_pass_positions[(r_id, 'mid')] = mid_pos
                      else:
-                         positions_after_phase1[(r_id, 'mid')] = r_start
+                         current_pass_positions[(r_id, 'mid')] = r_start
 
-            # --- PHASE 2: Adjust positions based on MIDPOINT constraints --- 
-            phase2_intended_positions = phase1_intended_positions.copy() # Start with Phase 1 results
+            # Apply initial external targets (these override current positions for this pass)
+            if pass_num == 0 and initial_targets:
+                 current_pass_positions.update(initial_targets)
 
+            # Store the final calculated positions for THIS pass
+            next_intended_rod_positions = intended_rod_positions.copy()
+
+            # --- Main Loop: Process each rod, applying constraints and updating immediately --- 
             for rod in self.rods:
-                if rod.mid_point_connection is None: continue # Skip if no mid-connection
-                
                 rod_id = rod.id
-                current_start, current_end = phase1_intended_positions[rod_id]
-                start_fixed_p1, end_fixed_p1 = endpoint_fixed_flags[rod_id]
+                # Get starting position for this rod IN THIS PASS (from previous pass or initial target)
+                current_start = current_pass_positions.get((rod_id, 'start'), QPointF()) 
+                current_end = current_pass_positions.get((rod_id, 'end'), QPointF()) 
+                
+                start_conn = rod.start_connection
+                end_conn = rod.end_connection
                 mid_conn = rod.mid_point_connection
-                original_length = rod.length # Needed for pivoting
+                original_length = rod.length
                 mid_dist = max(0.0, min(original_length, rod.mid_point_distance if rod.mid_point_distance is not None else 0.0))
 
-                # Get the target position for the mid-point from the dictionary updated after Phase 1
-                target_mid = positions_after_phase1.get(mid_conn)
-                if target_mid is None: continue # Skip if mid-target doesn't exist or wasn't calculated
+                # --- 1. Calculate Endpoint Adjustments --- 
+                target_start = None
+                if start_conn and start_conn[1] != 'mid': # Endpoint constraints first
+                    target_start = current_pass_positions.get(start_conn)
 
-                # Calculate current mid position based on Phase 1 results
-                mid_phase1 = QPointF()
-                vec_p1 = current_end - current_start
-                len_p1 = math.hypot(vec_p1.x(), vec_p1.y())
-                if len_p1 > 1e-6:
-                     ratio = mid_dist / len_p1
-                     mid_phase1 = current_start + vec_p1 * ratio
-                else:
-                     mid_phase1 = current_start 
+                target_end = None
+                if end_conn and end_conn[1] != 'mid': # Endpoint constraints first
+                    target_end = current_pass_positions.get(end_conn)
 
-                # If mid-point needs correction (more than tolerance)
-                if QPointF.dotProduct(target_mid - mid_phase1, target_mid - mid_phase1) > max_correction_threshold_sq:
-                    
-                    intended_start_p2 = QPointF(current_start)
-                    intended_end_p2 = QPointF(current_end)
+                intended_start_p1 = QPointF(current_start)
+                intended_end_p1 = QPointF(current_end)
+                start_fixed_p1 = False
+                end_fixed_p1 = False
+                
+                # (Apply endpoint logic - same as before, calculates intended_start_p1/end_p1 and fixed flags)
+                if rod.fixed_length:
+                    # ... (Fixed length endpoint logic - sets intended_start/end_p1, start/end_fixed_p1) ...
+                    if target_start and target_end:
+                        intended_start_p1 = target_start
+                        vec = target_end - intended_start_p1
+                        dist = math.hypot(vec.x(), vec.y())
+                        if dist > 1e-6: intended_end_p1 = intended_start_p1 + vec * (original_length / dist)
+                        else: intended_end_p1 = intended_start_p1
+                        start_fixed_p1 = True; end_fixed_p1 = True
+                    elif target_start:
+                        intended_start_p1 = target_start
+                        vec = current_end - intended_start_p1 # Use current end for orientation
+                        dist = math.hypot(vec.x(), vec.y())
+                        if dist > 1e-6: intended_end_p1 = intended_start_p1 + vec * (original_length / dist)
+                        else: intended_end_p1 = intended_start_p1
+                        start_fixed_p1 = True
+                    elif target_end:
+                        intended_end_p1 = target_end
+                        vec = current_start - intended_end_p1 # Use current start for orientation
+                        dist = math.hypot(vec.x(), vec.y())
+                        if dist > 1e-6: intended_start_p1 = intended_end_p1 + vec * (original_length / dist)
+                        else: intended_start_p1 = intended_end_p1
+                        end_fixed_p1 = True
+                else: # Non-fixed length
+                    # ... (Non-fixed length endpoint logic - sets intended_start/end_p1, start/end_fixed_p1) ...
+                    if target_start and target_end:
+                        intended_start_p1 = target_start; intended_end_p1 = target_end
+                        start_fixed_p1 = True; end_fixed_p1 = True
+                    elif target_start:
+                        intended_start_p1 = target_start; start_fixed_p1 = True
+                    elif target_end:
+                        intended_end_p1 = target_end; end_fixed_p1 = True
 
-                    if start_fixed_p1 and end_fixed_p1:
-                        # Case 4: Both ends fixed by endpoints. Cannot satisfy mid-point. Do nothing.
-                        pass 
-                    elif start_fixed_p1:
-                        # Case 2: Start fixed, pivot end (Requires fixed length)
-                        if rod.fixed_length:
-                            intended_start_p2 = current_start # Keep start fixed
-                            vec_S_TM = target_mid - intended_start_p2
-                            dist_S_TM = math.hypot(vec_S_TM.x(), vec_S_TM.y())
-                            if mid_dist > 1e-6 and dist_S_TM > 1e-6:
-                                # Use triangle similarity or vector rotation
-                                intended_end_p2 = intended_start_p2 + vec_S_TM * (original_length / mid_dist)
-                            else: # Degenerate case, mid is at start, try to maintain angle
-                                angle = math.atan2(vec_p1.y(), vec_p1.x())
-                                intended_end_p2 = intended_start_p2 + QPointF(original_length * math.cos(angle), original_length * math.sin(angle))
-                        else: 
-                            # Non-fixed length - cannot pivot end. Prioritize fixed start.
-                            pass # Do not apply mid-point correction in this case
-                    elif end_fixed_p1:
-                        # Case 3: End fixed, pivot start (Requires fixed length)
-                         if rod.fixed_length:
-                            intended_end_p2 = current_end # Keep end fixed
-                            vec_E_TM = target_mid - intended_end_p2
-                            dist_E_TM = math.hypot(vec_E_TM.x(), vec_E_TM.y())
-                            dist_end_mid = original_length - mid_dist
-                            if dist_end_mid > 1e-6 and dist_E_TM > 1e-6:
-                                intended_start_p2 = intended_end_p2 + vec_E_TM * (original_length / dist_end_mid)
-                            else: # Degenerate case, mid is at end
-                                angle = math.atan2(vec_p1.y(), vec_p1.x()) # Original angle
-                                intended_start_p2 = intended_end_p2 - QPointF(original_length * math.cos(angle), original_length * math.sin(angle))
-                         else:
-                            # Non-fixed length - cannot pivot start. Prioritize fixed end.
-                            pass # Do not apply mid-point correction in this case
+                # --- 2. Calculate Midpoint Adjustments (using Phase 1 results) --- 
+                intended_start_p2 = QPointF(intended_start_p1) # Start with P1 results
+                intended_end_p2 = QPointF(intended_end_p1)
+                
+                if mid_conn:
+                    target_mid = current_pass_positions.get(mid_conn)
+                    if target_mid:
+                        # Calculate mid position based on P1 results
+                        mid_phase1 = QPointF()
+                        vec_p1 = intended_end_p1 - intended_start_p1
+                        len_p1 = math.hypot(vec_p1.x(), vec_p1.y())
+                        if len_p1 > 1e-6: mid_phase1 = intended_start_p1 + vec_p1 * (mid_dist / len_p1)
+                        else: mid_phase1 = intended_start_p1
+                        
+                        # If mid-point needs correction
+                        if QPointF.dotProduct(target_mid - mid_phase1, target_mid - mid_phase1) > max_correction_threshold_sq:
+                             # (Apply mid-point logic - same as before, calculates intended_start/end_p2 based on fixed flags)
+                            if start_fixed_p1 and end_fixed_p1:
+                                pass # Both fixed by endpoints, cannot satisfy mid
+                            elif start_fixed_p1:
+                                # Case 2: Start fixed, adjust end
+                                if rod.fixed_length:
+                                     # Pivot fixed length
+                                    intended_start_p2 = intended_start_p1
+                                    vec_S_TM = target_mid - intended_start_p2
+                                    dist_S_TM = math.hypot(vec_S_TM.x(), vec_S_TM.y())
+                                    if mid_dist > 1e-6 and dist_S_TM > 1e-6:
+                                        intended_end_p2 = intended_start_p2 + vec_S_TM * (original_length / mid_dist)
+                                    else: # Degenerate
+                                        angle = math.atan2(vec_p1.y(), vec_p1.x())
+                                        intended_end_p2 = intended_start_p2 + QPointF(original_length * math.cos(angle), original_length * math.sin(angle))
+                                else:
+                                    # Stretch non-fixed length
+                                    intended_start_p2 = intended_start_p1
+                                    vec_S_TM = target_mid - intended_start_p2
+                                    dist_S_TM = math.hypot(vec_S_TM.x(), vec_S_TM.y())
+                                    if mid_dist > 1e-6 and dist_S_TM > 1e-6:
+                                        ratio = mid_dist / len_p1 if len_p1 > 1e-6 else 0.5
+                                        if ratio > 1e-6:
+                                            new_length = dist_S_TM / ratio
+                                            intended_end_p2 = intended_start_p2 + vec_S_TM * (new_length / dist_S_TM)
+                                        else: intended_end_p2 = intended_start_p2
+                                    else: intended_end_p2 = intended_start_p2
+                            elif end_fixed_p1:
+                                # Case 3: End fixed, adjust start
+                                if rod.fixed_length:
+                                    # Pivot fixed length
+                                    intended_end_p2 = intended_end_p1
+                                    vec_E_TM = target_mid - intended_end_p2
+                                    dist_E_TM = math.hypot(vec_E_TM.x(), vec_E_TM.y())
+                                    dist_end_mid = original_length - mid_dist
+                                    if dist_end_mid > 1e-6 and dist_E_TM > 1e-6:
+                                        intended_start_p2 = intended_end_p2 + vec_E_TM * (original_length / dist_end_mid)
+                                    else: # Degenerate
+                                        angle = math.atan2(vec_p1.y(), vec_p1.x())
+                                        intended_start_p2 = intended_end_p2 - QPointF(original_length * math.cos(angle), original_length * math.sin(angle))
+                                else:
+                                     # Stretch non-fixed length
+                                    intended_end_p2 = intended_end_p1
+                                    vec_E_TM = target_mid - intended_end_p2
+                                    dist_E_TM = math.hypot(vec_E_TM.x(), vec_E_TM.y())
+                                    dist_end_mid = len_p1 - mid_dist
+                                    if dist_end_mid > 1e-6 and dist_E_TM > 1e-6:
+                                        ratio_end = dist_end_mid / len_p1 if len_p1 > 1e-6 else 0.5
+                                        if ratio_end > 1e-6:
+                                            new_length = dist_E_TM / ratio_end
+                                            intended_start_p2 = intended_end_p2 + vec_E_TM * (new_length / dist_E_TM)
+                                        else: intended_start_p2 = intended_end_p2
+                                    else: intended_start_p2 = intended_end_p2
+                            else:
+                                # Case 1: Neither fixed by endpoints, translate rod
+                                translation = target_mid - mid_phase1
+                                intended_start_p2 = intended_start_p1 + translation
+                                intended_end_p2 = intended_end_p1 + translation
+
+                # --- 3. Store final intended position for this rod for this pass --- 
+                final_intended_start = intended_start_p2
+                final_intended_end = intended_end_p2
+                next_intended_rod_positions[rod_id] = (final_intended_start, final_intended_end)
+                
+                # --- 4. Immediately update current_pass_positions for subsequent rods --- 
+                current_pass_positions[(rod_id, 'start')] = final_intended_start
+                current_pass_positions[(rod_id, 'end')] = final_intended_end
+                if rod.mid_point_distance is not None:
+                    # Recalculate final mid-point
+                    vec_final = final_intended_end - final_intended_start
+                    len_final = math.hypot(vec_final.x(), vec_final.y())
+                    if len_final > 1e-6:
+                        ratio = max(0.0, min(1.0, mid_dist / len_final)) # Use actual mid_dist
+                        final_mid = final_intended_start + vec_final * ratio
+                        current_pass_positions[(rod_id, 'mid')] = final_mid
                     else:
-                        # Case 1: Neither end fixed by endpoints. Translate rod.
-                        translation = target_mid - mid_phase1
-                        intended_start_p2 = current_start + translation
-                        intended_end_p2 = current_end + translation
-
-                    # Store the adjusted positions from phase 2
-                    phase2_intended_positions[rod_id] = (intended_start_p2, intended_end_p2)
-
-            # --- Update intended positions for next pass and calculate max correction --- 
-            max_correction_this_pass_sq = 0.0 # Recalculate based on final phase 2 results
-            for rod_id in intended_rod_positions:
-                prev_start, prev_end = intended_rod_positions[rod_id]
-                final_start, final_end = phase2_intended_positions[rod_id]
-                correction_sq = max(QPointF.dotProduct(final_start - prev_start, final_start - prev_start),
-                                     QPointF.dotProduct(final_end - prev_end, final_end - prev_end))
+                        current_pass_positions[(rod_id, 'mid')] = final_intended_start
+                
+                # --- 5. Calculate correction for convergence check --- 
+                prev_start, prev_end = intended_rod_positions[rod_id] # Position from start of pass
+                correction_sq = max(QPointF.dotProduct(final_intended_start - prev_start, final_intended_start - prev_start),
+                                     QPointF.dotProduct(final_intended_end - prev_end, final_intended_end - prev_end))
                 max_correction_this_pass_sq = max(max_correction_this_pass_sq, correction_sq)
 
-            intended_rod_positions = phase2_intended_positions # Update for next pass
+            # --- End of loop through rods --- 
+            intended_rod_positions = next_intended_rod_positions # Update positions for next pass start
 
-            if DEBUG_CONSTRAINTS and pass_num < 5: print(f"  Pass {pass_num + 1} Max Correction Sq (End of Pass): {max_correction_this_pass_sq:.6f}")
+            if DEBUG_CONSTRAINTS and pass_num < 5: print(f"  Pass {pass_num + 1} Max Correction Sq: {max_correction_this_pass_sq:.6f}")
 
+            # Check convergence
             if max_correction_this_pass_sq < max_correction_threshold_sq:
                 if DEBUG_CONSTRAINTS: print(f"\\n  -> Converged after {pass_num + 1} passes.")
                 break
@@ -1157,7 +1175,6 @@ class DrawingCanvas(QWidget):
                 final_start, final_end = intended_rod_positions[rod.id]
                 rod.start_pos = final_start
                 rod.end_pos = final_end
-            # else: Rod might not have been in the initial dictionary if list changed during propagation? (Shouldn't happen here)
 
         self.update()
         if DEBUG_CONSTRAINTS:
